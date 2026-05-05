@@ -4,6 +4,8 @@ A Sweet Home 3D plugin that searches IKEA's online catalog and adds the 3D
 models directly into your home. Inspired by the
 [`ikea-browser`](https://github.com/shish/blender-ikea-browser) Blender add-on.
 
+![preview](./preview.png)
+
 ## Features
 
 - Adds **Furniture → Import IKEA model…** to Sweet Home 3D.
