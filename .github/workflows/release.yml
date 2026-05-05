@@ -1,0 +1,148 @@
+name: Build and Release Plugin
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SH3D_VERSION: "7.5"
+  SH3D_JAR_URL: "https://downloads.sourceforge.net/project/sweethome3d/SweetHome3D/SweetHome3D-7.5/SweetHome3D-7.5.jar"
+
+jobs:
+  # Each platform builds its own JNI bridge and uploads it as an artifact.
+  # The package job downloads and merges all of them before running ant.
+  build-native:
+    name: Build native (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            runs-on: macos-14   # Apple Silicon
+            install: brew install draco
+          - target: macos-x86_64
+            runs-on: macos-13   # Intel
+            install: brew install draco
+          - target: linux-x86_64
+            runs-on: ubuntu-latest
+            install: |
+              sudo apt-get update
+              sudo apt-get install -y libdraco-dev
+    runs-on: ${{ matrix.runs-on }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "11"
+
+      - name: Install libdraco
+        shell: bash
+        run: ${{ matrix.install }}
+
+      - name: Build JNI library
+        run: make -C native
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.target }}
+          path: src/com/drskunk/sh3dikea/draco/native/${{ matrix.target }}
+          if-no-files-found: error
+
+  build:
+    name: Build plugin artifact
+    needs: build-native
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "8"
+
+      - name: Install Ant
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ant
+
+      - name: Cache Sweet Home 3D jar
+        id: cache-sh3d-jar
+        uses: actions/cache@v4
+        with:
+          path: lib/SweetHome3D.jar
+          key: ${{ runner.os }}-sh3d-jar-${{ env.SH3D_VERSION }}
+
+      - name: Download Sweet Home 3D jar
+        if: steps.cache-sh3d-jar.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p lib
+          curl -fL "${SH3D_JAR_URL}" -o lib/SweetHome3D.jar
+
+      - name: Download native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: native-downloads
+
+      # download-artifact@v4 places each artifact in its own subdir named
+      # after the artifact (e.g. `native-macos-arm64/libdracojni.dylib`).
+      # Move them into the layout the ant build expects.
+      - name: Stage native artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          dest="src/com/drskunk/sh3dikea/draco/native"
+          mkdir -p "$dest"
+          for d in native-downloads/native-*; do
+            target="$dest/${d##*/native-}"
+            mkdir -p "$target"
+            cp -R "$d"/. "$target/"
+          done
+          find "$dest" -type f
+
+      - name: Build plugin
+        run: ant -Dsh3d.jar=lib/SweetHome3D.jar package
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IkeaBrowser-sh3p
+          path: dist/IkeaBrowser.sh3p
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release artifact
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download plugin artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: IkeaBrowser-sh3p
+
+      - name: Publish release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: IkeaBrowser.sh3p

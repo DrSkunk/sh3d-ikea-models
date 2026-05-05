@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="sh3d-ikea-models" default="package" basedir=".">
+
+    <!-- Path to a SweetHome3D.jar (or the application jar bundled with the
+         desktop install). Override on the command line:
+             ant -Dsh3d.jar=/path/to/SweetHome3D.jar
+         or drop the jar into the lib/ folder. -->
+    <property name="sh3d.jar" location="lib/SweetHome3D.jar"/>
+    <dirname property="sh3d.jar.dir" file="${sh3d.jar}"/>
+
+    <property name="src.dir"     value="src"/>
+    <property name="build.dir"   value="build/classes"/>
+    <property name="dist.dir"    value="dist"/>
+    <property name="plugin.name" value="IkeaBrowser"/>
+
+    <!-- Set -Ddebug=true to enable runtime logging in IkeaLog. -->
+    <property name="debug" value="false"/>
+
+    <target name="-check-sdk">
+        <available file="${sh3d.jar}" property="sh3d.jar.available"/>
+        <fail unless="sh3d.jar.available">
+SweetHome3D.jar was not found at:
+  ${sh3d.jar}
+
+Either drop the jar into lib/ or run with -Dsh3d.jar=/path/to/SweetHome3D.jar
+On macOS the jar typically lives inside the app bundle, e.g.:
+  /Applications/Sweet Home 3D.app/Contents/app/SweetHome3D.jar
+        </fail>
+    </target>
+
+    <target name="clean">
+        <delete dir="build"/>
+        <delete dir="${dist.dir}"/>
+    </target>
+
+    <target name="compile" depends="-check-sdk">
+        <mkdir dir="${build.dir}"/>
+        <javac srcdir="${src.dir}"
+               destdir="${build.dir}"
+               source="1.8"
+               target="1.8"
+               encoding="UTF-8"
+               includeantruntime="false"
+               debug="true">
+            <classpath>
+                <pathelement location="${sh3d.jar}"/>
+                <!-- Java 3D + vecmath are needed at compile time for the
+                     model probe-load. Look next to SweetHome3D.jar (the
+                     app bundle and most distributions ship them together)
+                     and also in lib/ as a fallback. -->
+                <fileset dir="${sh3d.jar.dir}"
+                         includes="j3dcore.jar,vecmath.jar,j3dutils.jar"
+                         erroronmissingdir="false"/>
+                <fileset dir="lib"
+                         includes="j3dcore.jar,vecmath.jar,j3dutils.jar"
+                         erroronmissingdir="false"/>
+                <!-- Fallback: search the macOS app bundle. -->
+                <fileset dir="/Applications/Sweet Home 3D.app/Contents/app"
+                         includes="j3dcore.jar,vecmath.jar,j3dutils.jar"
+                         erroronmissingdir="false"/>
+            </classpath>
+        </javac>
+    </target>
+
+    <!-- Copy bundled native libraries into the build output so they are
+         available both on the test classpath and inside the .sh3p jar. -->
+    <target name="-copy-natives" depends="compile">
+        <copy todir="${build.dir}/com/drskunk/sh3dikea/draco/native" failonerror="false">
+            <fileset dir="${src.dir}/com/drskunk/sh3dikea/draco/native"
+                     includes="**/*.dylib **/*.so **/*.dll"
+                     erroronmissingdir="false"/>
+        </copy>
+    </target>
+
+    <!-- Stamp the debug flag into a properties resource that IkeaLog reads
+         at startup. -->
+    <target name="-write-build-properties" depends="compile">
+        <mkdir dir="${build.dir}/com/drskunk/sh3dikea"/>
+        <echo file="${build.dir}/com/drskunk/sh3dikea/build.properties">debug=${debug}
+</echo>
+        <echo>Build flag: debug=${debug}</echo>
+    </target>
+
+    <target name="package" depends="compile, -copy-natives, -write-build-properties">
+        <mkdir dir="${dist.dir}"/>
+        <jar destfile="${dist.dir}/${plugin.name}.sh3p">
+            <fileset dir="${build.dir}"/>
+            <fileset dir="${src.dir}" includes="ApplicationPlugin.properties"/>
+        </jar>
+        <echo>Built ${dist.dir}/${plugin.name}.sh3p</echo>
+    </target>
+</project>

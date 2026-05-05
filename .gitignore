@@ -1,0 +1,35 @@
+# Build output
+build/
+dist/
+*.class
+*.jar
+*.sh3p
+
+# Sweet Home 3D SDK jar — vendor-supplied, do not commit
+lib/SweetHome3D.jar
+lib/*.jar
+
+# Native build intermediates (the committed artifacts under src/.../native/
+# are intentionally tracked so that downloads of the .sh3p don't require
+# users to install a C++ toolchain)
+native/build/
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+nbproject/private/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code per-user settings
+.claude/settings.local.json
