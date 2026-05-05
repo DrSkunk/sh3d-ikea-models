@@ -67,9 +67,9 @@ all: native package
 native:
 	@$(MAKE) -C native
 
-package: $(SH3P)
-
-$(SH3P):
+# Always run ant — it does its own incremental compilation, and Make can't
+# track the per-file Java/properties/native dependency graph.
+package:
 	@if [ -z "$(SH3D_JAR)" ] || [ ! -f "$(SH3D_JAR)" ]; then \
 	    echo "SweetHome3D.jar not found at: $(SH3D_JAR)"; \
 	    echo "Set SH3D_JAR=/path/to/SweetHome3D.jar or drop the jar into lib/"; \
@@ -88,7 +88,7 @@ debug: native
 	fi
 	$(ANT) -Dsh3d.jar="$(SH3D_JAR)" -Ddebug=true clean package
 
-install: $(SH3P)
+install: package
 	@if [ ! -d "$(SH3D_PLUGIN_DIR)" ]; then \
 	  echo "Creating $(SH3D_PLUGIN_DIR)"; \
 	  mkdir -p "$(SH3D_PLUGIN_DIR)"; \

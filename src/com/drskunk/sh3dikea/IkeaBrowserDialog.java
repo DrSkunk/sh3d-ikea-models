@@ -113,8 +113,10 @@ public final class IkeaBrowserDialog extends JDialog {
 
         statusLabel = new JLabel(" ");
         statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        // Status in CENTER so it wraps/clips on long messages instead of
+        // shoving the Close button off the dialog.
         JPanel bottom = new JPanel(new BorderLayout());
-        bottom.add(statusLabel, BorderLayout.WEST);
+        bottom.add(statusLabel, BorderLayout.CENTER);
         JButton close = new JButton("Close");
         close.addActionListener(e -> dispose());
         JPanel rightBottom = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));
@@ -173,8 +175,8 @@ public final class IkeaBrowserDialog extends JDialog {
                         statusLabel.setText("No results for \"" + query + "\"");
                         return;
                     }
-                    statusLabel.setText("Showing " + results.size() + " result(s). "
-                            + "Note: not every product has a 3D model.");
+                    statusLabel.setText(results.size() + " variant(s). Each tile is a colour/size — "
+                            + "refine the search (e.g. \"kallax white\") to narrow.");
                     for (IkeaProduct p : results) {
                         resultsPanel.add(buildTile(p));
                     }
@@ -198,18 +200,30 @@ public final class IkeaBrowserDialog extends JDialog {
         JLabel image = new JLabel("Loading…", JLabel.CENTER);
         image.setPreferredSize(new Dimension(THUMB_PX, THUMB_PX));
         image.setMaximumSize(new Dimension(THUMB_PX, THUMB_PX));
+        image.setMinimumSize(new Dimension(THUMB_PX, THUMB_PX));
         image.setAlignmentX(Component.CENTER_ALIGNMENT);
         tile.add(image);
 
-        JLabel name = new JLabel("<html><div style='width:160px;text-align:center;'>"
-                + escapeHtml(p.name == null ? p.itemNo : p.name) + "</div></html>");
-        name.setAlignmentX(Component.CENTER_ALIGNMENT);
+        // HTML width matches the image so long localised type names wrap
+        // inside the tile instead of widening it.
+        JLabel name = centered("<html><div style='width:" + THUMB_PX
+                + "px;text-align:center;'>"
+                + "<b>" + escapeHtml(p.name == null ? p.itemNo : p.name) + "</b>"
+                + (p.typeName != null && !p.typeName.isEmpty()
+                        ? "<br><span style='color:#555'>" + escapeHtml(p.typeName) + "</span>"
+                        : "")
+                + "</div></html>");
+        // Stop the label growing past the image width when text is short.
+        name.setMaximumSize(new Dimension(THUMB_PX, Short.MAX_VALUE));
         tile.add(Box.createVerticalStrut(4));
         tile.add(name);
 
-        JLabel item = new JLabel(IkeaProduct.formatItemNo(p.itemNo));
+        String detail = IkeaProduct.formatItemNo(p.itemNo);
+        if (p.measureRef != null && !p.measureRef.isEmpty()) {
+            detail += "  ·  " + p.measureRef;
+        }
+        JLabel item = centered(detail);
         item.setForeground(new Color(0x666666));
-        item.setAlignmentX(Component.CENTER_ALIGNMENT);
         tile.add(item);
 
         JButton add = new JButton("Add to home");
@@ -220,6 +234,13 @@ public final class IkeaBrowserDialog extends JDialog {
 
         loadThumbAsync(p, image);
         return tile;
+    }
+
+    private static JLabel centered(String text) {
+        JLabel l = new JLabel(text, JLabel.CENTER);
+        l.setHorizontalAlignment(JLabel.CENTER);
+        l.setAlignmentX(Component.CENTER_ALIGNMENT);
+        return l;
     }
 
     private void loadThumbAsync(IkeaProduct p, JLabel target) {
@@ -296,4 +317,5 @@ public final class IkeaBrowserDialog extends JDialog {
         if (s == null) return "";
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
+
 }

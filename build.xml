@@ -62,6 +62,12 @@ On macOS the jar typically lives inside the app bundle, e.g.:
         </javac>
     </target>
 
+    <!-- Twelvemonkeys ImageIO plugins (WebP reader + dependencies). These
+         are bundled inside the .sh3p so that IKEA's WebP textures decode
+         on every JRE without the user installing anything. -->
+    <fileset id="twelvemonkeys.jars" dir="lib/twelvemonkeys"
+             includes="*.jar" erroronmissingdir="false"/>
+
     <!-- Copy bundled native libraries into the build output so they are
          available both on the test classpath and inside the .sh3p jar. -->
     <target name="-copy-natives" depends="compile">
@@ -83,9 +89,12 @@ On macOS the jar typically lives inside the app bundle, e.g.:
 
     <target name="package" depends="compile, -copy-natives, -write-build-properties">
         <mkdir dir="${dist.dir}"/>
-        <jar destfile="${dist.dir}/${plugin.name}.sh3p">
+        <jar destfile="${dist.dir}/${plugin.name}.sh3p" duplicate="preserve">
             <fileset dir="${build.dir}"/>
             <fileset dir="${src.dir}" includes="ApplicationPlugin.properties"/>
+            <!-- Merge TwelveMonkeys jars (classes + META-INF/services) so
+                 ImageIO.scanForPlugins() picks up the WebP reader. -->
+            <zipgroupfileset refid="twelvemonkeys.jars"/>
         </jar>
         <echo>Built ${dist.dir}/${plugin.name}.sh3p</echo>
     </target>

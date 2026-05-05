@@ -81,10 +81,25 @@ public final class IkeaApiClient {
             String pipUrl = Json.asString(p.get("pipUrl"));
             if (itemNo == null || mainImageUrl == null || pipUrl == null) continue;
 
+            List<IkeaProduct.ProductColor> colors = new ArrayList<>();
+            List<Object> rawColors = Json.asArray(p.get("colors"));
+            if (rawColors != null) {
+                for (Object co : rawColors) {
+                    Map<String, Object> cm = Json.asObject(co);
+                    if (cm == null) continue;
+                    String name = Json.asString(cm.get("name"));
+                    String hex = Json.asString(cm.get("hex"));
+                    if (name == null && hex == null) continue;
+                    colors.add(new IkeaProduct.ProductColor(name, hex));
+                }
+            }
+
             out.add(new IkeaProduct(
                     itemNo,
                     Json.asString(p.get("name")),
                     Json.asString(p.get("typeName")),
+                    Json.asString(p.get("itemMeasureReferenceText")),
+                    colors,
                     mainImageUrl,
                     Json.asString(p.get("mainImageAlt")),
                     pipUrl));
