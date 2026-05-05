@@ -21,65 +21,13 @@ models directly into your home. Inspired by the
 - Falls back to a textured-box placeholder when the model can't be
   decoded (e.g. on a platform with no bundled native binary).
 
-## Building
+## Install
 
-Requirements:
+Grab the latest pre-built plugin here: [Download `IkeaBrowser.sh3p`](https://github.com/DrSkunk/sh3d-ikea-models/releases/latest/download/IkeaBrowser.sh3p)
 
-- A JDK (8 or newer) and Apache Ant.
-- A C++14 compiler and the libdraco development files. These are only
-  needed if you don't already have a native binary committed under
-  `src/com/drskunk/sh3dikea/draco/native/<os>-<arch>/` for your host.
-  - macOS: `brew install draco`
-  - Debian / Ubuntu: `sudo apt install libdraco-dev`
-
-Then:
-
-```sh
-# Build everything (native lib + .sh3p) using the standard Sweet Home 3D
-# location for your platform:
-make
-
-# Override the SH3D location explicitly:
-make SH3D_JAR=/path/to/SweetHome3D.jar
-
-# Other useful targets:
-make native     # rebuild the JNI bridge only
-make package    # only re-run ant (skips native rebuild)
-make clean      # wipe build/ and dist/
-make distclean  # also remove all bundled native binaries
-make help       # list targets and variables
-```
-
-The plugin file is written to `dist/IkeaBrowser.sh3p`.
-
-If you'd rather invoke the underlying tools directly, `make -C native`
-builds the JNI bridge and `ant -Dsh3d.jar=...` packages the `.sh3p`.
-Drop a `SweetHome3D.jar` into `lib/` to skip the `-Dsh3d.jar` flag. On
-macOS that jar lives at `/Applications/Sweet Home 3D.app/Contents/app/SweetHome3D.jar`.
-
-### Native binary platforms
-
-`make native` writes the compiled library to
-`src/com/drskunk/sh3dikea/draco/native/<os>-<arch>/<libname>` and the Ant
-build picks up everything in that directory tree. Layout:
-
-| OS / Arch        | File                      | Built in CI |
-| ---------------- | ------------------------- | ----------- |
-| `macos-arm64`    | `libdracojni.dylib`       | yes         |
-| `linux-x86_64`   | `libdracojni.so`          | yes         |
-| `linux-arm64`    | `libdracojni.so`          | yes         |
-| `windows-x86_64` | `dracojni.dll`            | yes         |
-| `macos-x86_64`   | `libdracojni.dylib`       | no          |
-
-Run `make native` on each target platform you want to support; commit
-the resulting binaries alongside the source. Users on platforms without
-a bundled binary still get the textured-box placeholder fallback.
-
-## Installing
-
-In Sweet Home 3D, open **File → Preferences → Plug-ins → Import…** and pick
-`dist/IkeaBrowser.sh3p`. Restart Sweet Home 3D. The new entry appears under
-the **Furniture** menu.
+Then in Sweet Home 3D, open **File → Preferences → Plug-ins → Import…** and
+pick the downloaded `IkeaBrowser.sh3p`. Restart Sweet Home 3D. The new entry
+appears under the **Furniture** menu.
 
 Alternatively, drop the `.sh3p` file into Sweet Home 3D's `plugins` folder:
 
@@ -152,6 +100,60 @@ re-download / re-conversion on the next import.
 - The IKEA API is unofficial and may change without notice.
 - Pieces are imported as one-off `HomePieceOfFurniture` entries — they
   aren't added to the SH3D furniture catalog for re-use.
+
+## Build from source
+
+Requirements:
+
+- A JDK (8 or newer) and Apache Ant.
+- A C++14 compiler and the libdraco development files. These are only
+  needed if you don't already have a native binary committed under
+  `src/com/drskunk/sh3dikea/draco/native/<os>-<arch>/` for your host.
+  - macOS: `brew install draco`
+  - Debian / Ubuntu: `sudo apt install libdraco-dev`
+
+Then:
+
+```sh
+# Build everything (native lib + .sh3p) using the standard Sweet Home 3D
+# location for your platform:
+make
+
+# Override the SH3D location explicitly:
+make SH3D_JAR=/path/to/SweetHome3D.jar
+
+# Other useful targets:
+make native     # rebuild the JNI bridge only
+make package    # only re-run ant (skips native rebuild)
+make clean      # wipe build/ and dist/
+make distclean  # also remove all bundled native binaries
+make help       # list targets and variables
+```
+
+The plugin file is written to `dist/IkeaBrowser.sh3p`.
+
+If you'd rather invoke the underlying tools directly, `make -C native`
+builds the JNI bridge and `ant -Dsh3d.jar=...` packages the `.sh3p`.
+Drop a `SweetHome3D.jar` into `lib/` to skip the `-Dsh3d.jar` flag. On
+macOS that jar lives at `/Applications/Sweet Home 3D.app/Contents/app/SweetHome3D.jar`.
+
+### Native binary platforms
+
+`make native` writes the compiled library to
+`src/com/drskunk/sh3dikea/draco/native/<os>-<arch>/<libname>` and the Ant
+build picks up everything in that directory tree. Layout:
+
+| OS / Arch        | File                      | Built in CI |
+| ---------------- | ------------------------- | ----------- |
+| `macos-arm64`    | `libdracojni.dylib`       | yes         |
+| `linux-x86_64`   | `libdracojni.so`          | yes         |
+| `linux-arm64`    | `libdracojni.so`          | yes         |
+| `windows-x86_64` | `dracojni.dll`            | yes         |
+| `macos-x86_64`   | `libdracojni.dylib`       | no          |
+
+Run `make native` on each target platform you want to support; commit
+the resulting binaries alongside the source. Users on platforms without
+a bundled binary still get the textured-box placeholder fallback.
 
 ## License
 
