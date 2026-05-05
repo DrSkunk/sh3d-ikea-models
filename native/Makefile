@@ -65,8 +65,8 @@ endif
 # On MSYS2 / Cygwin, JAVA_HOME comes in as a Windows-style path
 # (C:\hostedtoolcache\...). Translate it so the -I flags work correctly.
 ifeq ($(OS),windows)
-    JAVA_HOME := $(shell cygpath -u "$(JAVA_HOME)" 2>/dev/null || echo "$(JAVA_HOME)")
-    DRACO_PREFIX := $(shell cygpath -u "$(DRACO_PREFIX)" 2>/dev/null || echo "$(DRACO_PREFIX)")
+    JAVA_HOME := $(shell cygpath -m "$(JAVA_HOME)" 2>/dev/null || echo "$(JAVA_HOME)")
+    DRACO_PREFIX := $(shell cygpath -m "$(DRACO_PREFIX)" 2>/dev/null || echo "$(DRACO_PREFIX)")
 endif
 
 # --- libdraco -------------------------------------------------------------
