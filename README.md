@@ -61,13 +61,13 @@ macOS that jar lives at `/Applications/Sweet Home 3D.app/Contents/app/SweetHome3
 `src/com/drskunk/sh3dikea/draco/native/<os>-<arch>/<libname>` and the Ant
 build picks up everything in that directory tree. Layout:
 
-| OS / Arch        | File                      |
-| ---------------- | ------------------------- |
-| `macos-arm64`    | `libdracojni.dylib`       |
-| `macos-x86_64`   | `libdracojni.dylib`       |
-| `linux-x86_64`   | `libdracojni.so`          |
-| `linux-arm64`    | `libdracojni.so`          |
-| `windows-x86_64` | `dracojni.dll`            |
+| OS / Arch        | File                      | Built in CI |
+| ---------------- | ------------------------- | ----------- |
+| `macos-arm64`    | `libdracojni.dylib`       | yes         |
+| `linux-x86_64`   | `libdracojni.so`          | yes         |
+| `linux-arm64`    | `libdracojni.so`          | yes         |
+| `windows-x86_64` | `dracojni.dll`            | yes         |
+| `macos-x86_64`   | `libdracojni.dylib`       | no          |
 
 Run `make native` on each target platform you want to support; commit
 the resulting binaries alongside the source. Users on platforms without

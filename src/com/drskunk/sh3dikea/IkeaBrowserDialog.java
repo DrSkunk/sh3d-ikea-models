@@ -117,6 +117,20 @@ public final class IkeaBrowserDialog extends JDialog {
         // shoving the Close button off the dialog.
         JPanel bottom = new JPanel(new BorderLayout());
         bottom.add(statusLabel, BorderLayout.CENTER);
+
+        JButton openCache = new JButton("Open cache folder");
+        openCache.setToolTipText("Show the IKEA Browser cache directory in your file manager");
+        openCache.addActionListener(e -> openCacheFolder());
+
+        JButton clearCache = new JButton("Clear cache");
+        clearCache.setToolTipText("Delete every cached thumbnail, GLB, and OBJ bundle");
+        clearCache.addActionListener(e -> clearCache());
+
+        JPanel leftBottom = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 6));
+        leftBottom.add(openCache);
+        leftBottom.add(clearCache);
+        bottom.add(leftBottom, BorderLayout.WEST);
+
         JButton close = new JButton("Close");
         close.addActionListener(e -> dispose());
         JPanel rightBottom = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));
@@ -311,6 +325,53 @@ public final class IkeaBrowserDialog extends JDialog {
                 }
             }
         }.execute();
+    }
+
+    private void openCacheFolder() {
+        File folder = cache.getRoot();
+        if (!folder.exists()) folder.mkdirs();
+        try {
+            if (java.awt.Desktop.isDesktopSupported()
+                    && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.OPEN)) {
+                java.awt.Desktop.getDesktop().open(folder);
+                return;
+            }
+        } catch (Exception ex) {
+            // fall through to platform-specific fallback
+        }
+        try {
+            // Final fallback: shell out per OS so this still works on stock
+            // Linux JREs where Desktop is unsupported.
+            String os = System.getProperty("os.name", "").toLowerCase();
+            ProcessBuilder pb;
+            if (os.contains("mac")) {
+                pb = new ProcessBuilder("open", folder.getAbsolutePath());
+            } else if (os.contains("win")) {
+                pb = new ProcessBuilder("explorer", folder.getAbsolutePath());
+            } else {
+                pb = new ProcessBuilder("xdg-open", folder.getAbsolutePath());
+            }
+            pb.start();
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this,
+                    "Could not open the cache folder.\nIt lives at:\n" + folder.getAbsolutePath(),
+                    "IKEA Browser", JOptionPane.WARNING_MESSAGE);
+        }
+    }
+
+    private void clearCache() {
+        int choice = JOptionPane.showConfirmDialog(this,
+                "Delete every cached thumbnail, GLB, and OBJ bundle?\n"
+                        + "Items already placed in your home are unaffected — only the\n"
+                        + "downloaded files are removed. Re-importing afterwards will\n"
+                        + "redownload from IKEA.",
+                "Clear cache",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+        if (choice != JOptionPane.OK_OPTION) return;
+        int removed = cache.clearAll();
+        iconCache.clear();
+        statusLabel.setText("Cleared " + removed + " cached file(s).");
     }
 
     private static String escapeHtml(String s) {

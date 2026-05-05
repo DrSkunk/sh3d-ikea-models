@@ -31,6 +31,29 @@ public final class IkeaCache {
         }
     }
 
+    public File getRoot() { return root; }
+
+    /**
+     * Recursively delete every file and per-item directory under the cache
+     * root. The root itself is preserved. Returns the number of files
+     * removed (best-effort; failures are ignored).
+     */
+    public int clearAll() {
+        File[] children = root.listFiles();
+        if (children == null) return 0;
+        int[] count = {0};
+        for (File c : children) deleteTree(c, count);
+        return count[0];
+    }
+
+    private static void deleteTree(File f, int[] count) {
+        if (f.isDirectory()) {
+            File[] children = f.listFiles();
+            if (children != null) for (File c : children) deleteTree(c, count);
+        }
+        if (f.delete()) count[0]++;
+    }
+
     public File getDir(String itemNo) throws IOException {
         File d = new File(root, itemNo);
         if (!d.exists() && !d.mkdirs()) {

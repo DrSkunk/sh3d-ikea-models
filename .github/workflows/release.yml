@@ -27,15 +27,26 @@ jobs:
         include:
           - target: macos-arm64
             runs-on: macos-14   # Apple Silicon
-            install: brew install draco
-          - target: macos-x86_64
-            runs-on: macos-13   # Intel
+            shell: bash
             install: brew install draco
           - target: linux-x86_64
             runs-on: ubuntu-latest
+            shell: bash
             install: |
               sudo apt-get update
               sudo apt-get install -y libdraco-dev
+          - target: linux-arm64
+            runs-on: ubuntu-24.04-arm
+            shell: bash
+            install: |
+              sudo apt-get update
+              sudo apt-get install -y libdraco-dev
+          - target: windows-x86_64
+            runs-on: windows-latest
+            # MSYS2 mingw64 gives us a GCC toolchain and pre-built libdraco.
+            # The msys2 setup step below provisions both.
+            shell: 'msys2 {0}'
+            install: ":"  # provisioning happens via setup-msys2; no extra install
     runs-on: ${{ matrix.runs-on }}
 
     steps:
@@ -47,6 +58,18 @@ jobs:
         with:
           distribution: temurin
           java-version: "11"
+
+      - name: Set up MSYS2 (Windows)
+        if: matrix.target == 'windows-x86_64'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            base-devel
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-draco
 
       # The compiled JNI binary is statically linked against libdraco, so a
       # cache hit gives us a self-contained binary even if the upstream draco
@@ -60,13 +83,21 @@ jobs:
           key: native-${{ matrix.target }}-${{ hashFiles('native/src/**', 'native/Makefile') }}
 
       - name: Install libdraco
-        if: steps.cache-native.outputs.cache-hit != 'true'
+        if: steps.cache-native.outputs.cache-hit != 'true' && matrix.target != 'windows-x86_64'
         shell: bash
         run: ${{ matrix.install }}
 
       - name: Build JNI library
         if: steps.cache-native.outputs.cache-hit != 'true'
-        run: make -C native
+        shell: ${{ matrix.shell }}
+        run: |
+          # MSYS2 ships GNU make as `mingw32-make`; everywhere else `make` is
+          # the GNU make we want.
+          if command -v make >/dev/null 2>&1; then
+            make -C native
+          else
+            mingw32-make -C native
+          fi
 
       - name: Upload native artifact
         uses: actions/upload-artifact@v4

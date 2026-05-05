@@ -38,7 +38,9 @@ else ifneq (,$(filter MINGW% MSYS% CYGWIN%,$(UNAME_S)))
     LIB_PREFIX       :=
     LIB_EXT          := dll
     PLATFORM_INCLUDE := win32
-    LDFLAGS_OS       := -shared
+    # Static-link the MinGW C++ runtime so the produced .dll doesn't need
+    # libgcc_s_seh-1.dll / libstdc++-6.dll / libwinpthread-1.dll alongside it.
+    LDFLAGS_OS       := -shared -static -static-libgcc -static-libstdc++ -Wl,--add-stdcall-alias
 else
     $(error Unsupported OS: $(UNAME_S))
 endif
@@ -60,11 +62,19 @@ ifeq ($(JAVA_HOME),)
     $(error JAVA_HOME is not set and could not be inferred)
 endif
 
+# On MSYS2 / Cygwin, JAVA_HOME comes in as a Windows-style path
+# (C:\hostedtoolcache\...). Translate it so the -I flags work correctly.
+ifeq ($(OS),windows)
+    JAVA_HOME := $(shell cygpath -u "$(JAVA_HOME)" 2>/dev/null || echo "$(JAVA_HOME)")
+    DRACO_PREFIX := $(shell cygpath -u "$(DRACO_PREFIX)" 2>/dev/null || echo "$(DRACO_PREFIX)")
+endif
+
 # --- libdraco -------------------------------------------------------------
 
-# Auto-detect Homebrew (Apple Silicon + Intel), local install, or system path.
+# Auto-detect Homebrew (Apple Silicon + Intel), MSYS2 mingw64, local
+# install, or system path.
 ifeq ($(DRACO_PREFIX),)
-    DRACO_PREFIX := $(shell for p in /opt/homebrew /usr/local /usr; do \
+    DRACO_PREFIX := $(shell for p in /opt/homebrew /mingw64 /usr/local /usr; do \
         if [ -f $$p/include/draco/compression/decode.h ]; then \
             echo $$p; break; \
         fi; \
