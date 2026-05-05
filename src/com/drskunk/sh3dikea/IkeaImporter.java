@@ -1,7 +1,6 @@
 package com.drskunk.sh3dikea;
 
 import com.drskunk.sh3dikea.glb.GlbToObj;
-import com.eteks.sweethome3d.j3d.ModelManager;
 import com.eteks.sweethome3d.model.CatalogPieceOfFurniture;
 import com.eteks.sweethome3d.model.Camera;
 import com.eteks.sweethome3d.model.Content;
@@ -126,9 +125,14 @@ public final class IkeaImporter {
         // Probe-load via the very same SH3D loader the placement will use.
         // If this throws, we capture the actual error in debug.log instead
         // of letting Sweet Home 3D silently substitute its red error block.
+        // Uses reflection to avoid a compile-time dependency on j3dcore/vecmath jars
+        // (they ship with the SH3D desktop app but not in the standalone jar used in CI).
         try {
-            javax.media.j3d.Node node = ModelManager.getInstance().loadModel(modelContent);
-            javax.vecmath.Vector3f size = ModelManager.getInstance().getSize(node);
+            Class<?> mmClass = Class.forName("com.eteks.sweethome3d.j3d.ModelManager");
+            Object mm = mmClass.getMethod("getInstance").invoke(null);
+            Object node = mmClass.getMethod("loadModel", Content.class).invoke(mm, modelContent);
+            Object size = mmClass.getMethod("getSize", Class.forName("javax.media.j3d.Node"))
+                                 .invoke(mm, node);
             IkeaLog.info("Model probe-load OK: size " + size);
         } catch (Throwable t) {
             IkeaLog.error("Model probe-load FAILED for " + bundleUrl, t);
