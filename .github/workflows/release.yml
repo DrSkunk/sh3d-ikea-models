@@ -88,16 +88,14 @@ jobs:
         run: ${{ matrix.install }}
 
       - name: Build JNI library
-        if: steps.cache-native.outputs.cache-hit != 'true'
-        shell: ${{ matrix.shell }}
-        run: |
-          # MSYS2 ships GNU make as `mingw32-make`; everywhere else `make` is
-          # the GNU make we want.
-          if command -v make >/dev/null 2>&1; then
-            make -C native
-          else
-            mingw32-make -C native
-          fi
+        if: steps.cache-native.outputs.cache-hit != 'true' && matrix.target != 'windows-x86_64'
+        shell: bash
+        run: make -C native
+
+      - name: Build JNI library (Windows)
+        if: steps.cache-native.outputs.cache-hit != 'true' && matrix.target == 'windows-x86_64'
+        shell: 'msys2 {0}'
+        run: mingw32-make -C native
 
       - name: Upload native artifact
         uses: actions/upload-artifact@v4
