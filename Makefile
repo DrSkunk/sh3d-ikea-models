@@ -10,6 +10,9 @@
 #   make install        # copy the .sh3p into the local plugins folder
 #   make reinstall      # clean + build + install
 #   make run            # launch Sweet Home 3D (macOS only)
+#   make bump-major     # 1.2.3 → 2.0.0, commit, tag vX.Y.Z
+#   make bump-minor     # 1.2.3 → 1.3.0, commit, tag vX.Y.Z
+#   make bump-patch     # 1.2.3 → 1.2.4, commit, tag vX.Y.Z
 #   make clean          # remove build/ and dist/
 #   make distclean      # clean + remove bundled native binaries
 #   make print-config   # show resolved variables
@@ -23,6 +26,7 @@
 
 PLUGIN_NAME := IkeaBrowser
 SH3P        := dist/$(PLUGIN_NAME).sh3p
+PROPS       := src/ApplicationPlugin.properties
 
 UNAME       := $(shell uname -s)
 
@@ -60,7 +64,8 @@ ANT        ?= ant
 
 # --- Targets -----------------------------------------------------------------
 
-.PHONY: all native package debug install reinstall run clean distclean print-config help
+.PHONY: all native package debug install reinstall run clean distclean \
+        bump-major bump-minor bump-patch _bump print-config help
 
 all: native package
 
@@ -122,6 +127,52 @@ print-config:
 	@echo "SH3D_JAR        = $(SH3D_JAR)"
 	@echo "SH3D_PLUGIN_DIR = $(SH3D_PLUGIN_DIR)"
 	@echo "DRACO_PREFIX    = $(DRACO_PREFIX)"
+	@echo "VERSION         = $(shell grep '^version=' $(PROPS) | cut -d= -f2)"
+
+# --- Version bumping --------------------------------------------------------
+# Each target reads $(PROPS), increments the requested field, writes back,
+# commits the change, and creates an annotated git tag. Push with
+# `git push && git push --tags` — that's also what the release workflow's
+# tag trigger watches for.
+
+bump-major:
+	@$(MAKE) -s _bump TYPE=major
+
+bump-minor:
+	@$(MAKE) -s _bump TYPE=minor
+
+bump-patch:
+	@$(MAKE) -s _bump TYPE=patch
+
+_bump:
+	@if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then \
+	    echo "Not inside a git repository — nothing to commit/tag." >&2; \
+	    exit 1; \
+	fi; \
+	CUR=$$(grep '^version=' $(PROPS) | cut -d= -f2); \
+	if [ -z "$$CUR" ]; then \
+	    echo "version= not found in $(PROPS)" >&2; exit 1; \
+	fi; \
+	MAJ=$$(echo "$$CUR" | cut -d. -f1); \
+	MIN=$$(echo "$$CUR" | cut -d. -f2); \
+	PAT=$$(echo "$$CUR" | cut -d. -f3); \
+	case "$(TYPE)" in \
+	    major) NEW="$$((MAJ+1)).0.0" ;; \
+	    minor) NEW="$$MAJ.$$((MIN+1)).0" ;; \
+	    patch) NEW="$$MAJ.$$MIN.$$((PAT+1))" ;; \
+	    *) echo "Unknown bump type: $(TYPE)" >&2; exit 1 ;; \
+	esac; \
+	if git rev-parse "v$$NEW" >/dev/null 2>&1; then \
+	    echo "Tag v$$NEW already exists — aborting." >&2; exit 1; \
+	fi; \
+	sed -i.bak "s/^version=.*/version=$$NEW/" $(PROPS) && rm -f $(PROPS).bak; \
+	git add $(PROPS); \
+	git commit -m "chore: bump version to v$$NEW" -- $(PROPS) >/dev/null; \
+	git tag -a "v$$NEW" -m "Release v$$NEW"; \
+	echo; \
+	echo "Bumped $$CUR -> $$NEW and created tag v$$NEW."; \
+	echo "Push to publish (triggers CI release):"; \
+	echo "    git push && git push --tags"
 
 help:
 	@echo "Targets:"
@@ -132,6 +183,9 @@ help:
 	@echo "  make install     copy $(SH3P) into the local plugins folder"
 	@echo "  make reinstall   clean + build + install"
 	@echo "  make run         launch Sweet Home 3D (macOS only)"
+	@echo "  make bump-major  bump major version, commit, tag"
+	@echo "  make bump-minor  bump minor version, commit, tag"
+	@echo "  make bump-patch  bump patch version, commit, tag"
 	@echo "  make clean       remove build/ and dist/"
 	@echo "  make distclean   clean + remove bundled native binaries"
 	@echo "  make print-config  show resolved variables"
