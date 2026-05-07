@@ -315,6 +315,7 @@ public final class IkeaBrowserDialog extends JDialog {
                     IkeaImporter.Prepared prepared = get();
                     button.setEnabled(true);
                     button.setText(original);
+                    button.setToolTipText(null);
                     importer.addToHome(homeController, home, prepared);
                     statusLabel.setText("Added \"" + p.name + "\" to home.");
                 } catch (Exception ex) {
@@ -328,6 +329,7 @@ public final class IkeaBrowserDialog extends JDialog {
                     } else {
                         button.setEnabled(true);
                         button.setText(original);
+                        button.setToolTipText(null);
                         JOptionPane.showMessageDialog(IkeaBrowserDialog.this,
                                 "Could not import this item:\n" + cause.getMessage(),
                                 "IKEA Browser", JOptionPane.ERROR_MESSAGE);
