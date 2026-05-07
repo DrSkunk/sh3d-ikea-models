@@ -311,17 +311,27 @@ public final class IkeaBrowserDialog extends JDialog {
             @Override
             protected void done() {
                 setCursor(Cursor.getDefaultCursor());
-                button.setEnabled(true);
-                button.setText(original);
                 try {
                     IkeaImporter.Prepared prepared = get();
+                    button.setEnabled(true);
+                    button.setText(original);
                     importer.addToHome(homeController, home, prepared);
                     statusLabel.setText("Added \"" + p.name + "\" to home.");
                 } catch (Exception ex) {
                     Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
-                    JOptionPane.showMessageDialog(IkeaBrowserDialog.this,
-                            "Could not import this item:\n" + cause.getMessage(),
-                            "IKEA Browser", JOptionPane.ERROR_MESSAGE);
+                    if (cause instanceof IkeaImporter.IkeaException) {
+                        // No 3D model available — keep button disabled and show a note.
+                        button.setText("No 3D model");
+                        button.setToolTipText(cause.getMessage());
+                        statusLabel.setText("No 3D model available for "
+                                + IkeaProduct.formatItemNo(p.itemNo) + ".");
+                    } else {
+                        button.setEnabled(true);
+                        button.setText(original);
+                        JOptionPane.showMessageDialog(IkeaBrowserDialog.this,
+                                "Could not import this item:\n" + cause.getMessage(),
+                                "IKEA Browser", JOptionPane.ERROR_MESSAGE);
+                    }
                 }
             }
         }.execute();
