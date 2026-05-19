@@ -247,6 +247,7 @@ public final class IkeaBrowserDialog extends JDialog {
         tile.add(add);
 
         loadThumbAsync(p, image);
+        checkModelAvailabilityAsync(p, add);
         return tile;
     }
 
@@ -291,6 +292,28 @@ public final class IkeaBrowserDialog extends JDialog {
                     }
                 } catch (Exception ex) {
                     target.setText("(image error)");
+                }
+            }
+        }.execute();
+    }
+
+    private void checkModelAvailabilityAsync(IkeaProduct p, JButton addButton) {
+        new SwingWorker<Boolean, Void>() {
+            @Override
+            protected Boolean doInBackground() throws Exception {
+                return api.modelExists(IkeaProduct.compactItemNo(p.itemNo));
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    if (!get()) {
+                        addButton.setEnabled(false);
+                        addButton.setText("No 3D model available");
+                    }
+                } catch (Exception ex) {
+                    // If the check fails, leave the button enabled so the user
+                    // can still attempt the import (which will surface the error).
                 }
             }
         }.execute();
