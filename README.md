@@ -47,6 +47,30 @@ Alternatively, drop the `.sh3p` file into Sweet Home 3D's `plugins` folder:
 Note: not every IKEA product has a 3D model. If the API reports no model is
 available, the import dialog says so and nothing is added.
 
+## Troubleshooting
+
+### "Search failed: cannot resolve host …"
+
+Sweet Home 3D can't reach IKEA. The Flathub build of Sweet Home 3D ships
+**without network access**, so the plugin can't connect until you grant it:
+
+```sh
+flatpak override --user --share=network com.sweethome3d.Sweethome3d
+```
+
+(or enable **Network** for Sweet Home 3D in Flatseal), then restart Sweet
+Home 3D. Otherwise, check your internet connection, proxy, firewall, or DNS
+filter.
+
+### Log file
+
+Warnings and errors are written to `IkeaBrowser/debug.log` in the Sweet
+Home 3D application folder (next to the cache, see below). Please attach it
+when reporting a bug. The first line of each session records the plugin
+version, OS, Java version, and whether Sweet Home 3D runs in a Flatpak or
+Snap sandbox. Builds made with `make debug` (or Sweet Home 3D started with
+`-Dikeabrowser.debug=true`) also log every HTTP request and import step.
+
 ## How models are imported
 
 IKEA serves products via the same public endpoints used by the Blender
@@ -109,7 +133,19 @@ Requirements:
 - A C++14 compiler and the libdraco development files. These are only
   needed if you don't already have a native binary committed under
   `src/com/drskunk/sh3dikea/draco/native/<os>-<arch>/` for your host.
-  - macOS: `brew install draco`
+  - macOS: build a static libdraco for the plugin's minimum macOS
+    version (Homebrew's `draco` targets your own macOS version, so the
+    result wouldn't load on older systems; `make native` rejects it).
+    Git and CMake are also required:
+
+    ```sh
+    git clone --depth 1 --branch 1.5.7 https://github.com/google/draco.git /tmp/draco-src
+    cmake -S /tmp/draco-src -B /tmp/draco-build -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+      -DCMAKE_INSTALL_PREFIX=$HOME/.local/draco-macos11
+    cmake --build /tmp/draco-build -j && cmake --install /tmp/draco-build
+    make DRACO_PREFIX=$HOME/.local/draco-macos11
+    ```
   - Debian / Ubuntu: `sudo apt install libdraco-dev`
 
 Then:
@@ -154,6 +190,15 @@ build picks up everything in that directory tree. Layout:
 Run `make native` on each target platform you want to support; commit
 the resulting binaries alongside the source. Users on platforms without
 a bundled binary still get the textured-box placeholder fallback.
+
+libdraco is always linked statically, and on Linux so are libstdc++ and
+libgcc, so the bridge loads on machines (and Flatpak/Snap sandboxes)
+without libdraco installed. `make native` fails if `libdraco.a` can't be
+found, and it checks the built library's runtime dependencies. Set
+`DRACO_ALLOW_SHARED=1` to skip both checks for a local-only build. CI
+builds the Linux binaries on Ubuntu 22.04, so they need glibc 2.34 or
+newer. The macOS binary targets macOS 11 or newer
+(`MACOSX_DEPLOYMENT_TARGET`).
 
 ## License
 

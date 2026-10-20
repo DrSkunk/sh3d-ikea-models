@@ -107,6 +107,7 @@ public final class IkeaImporter {
                         r.depthMeters() * METERS_TO_CM,
                         r.heightMeters() * METERS_TO_CM);
             } catch (GlbToObj.UnsupportedExtensionException ex) {
+                IkeaLog.warn("Using placeholder box for " + itemNo + ": " + ex.getMessage(), null);
                 // Fall back to a placeholder box; we still have the photo + measurements.
                 PlaceholderBox.build(thumbFile, bundle);
                 placeholder = true;

@@ -78,13 +78,15 @@ On macOS the jar typically lives inside the app bundle, e.g.:
         </copy>
     </target>
 
-    <!-- Stamp the debug flag into a properties resource that IkeaLog reads
-         at startup. -->
+    <!-- Stamp the debug flag and plugin version into a properties resource
+         that IkeaLog reads at startup. -->
     <target name="-write-build-properties" depends="compile">
+        <property file="${src.dir}/ApplicationPlugin.properties" prefix="plugin"/>
         <mkdir dir="${build.dir}/com/drskunk/sh3dikea"/>
         <echo file="${build.dir}/com/drskunk/sh3dikea/build.properties">debug=${debug}
+version=${plugin.version}
 </echo>
-        <echo>Build flag: debug=${debug}</echo>
+        <echo>Build flags: debug=${debug}, version=${plugin.version}</echo>
     </target>
 
     <target name="package" depends="compile, -copy-natives, -write-build-properties">

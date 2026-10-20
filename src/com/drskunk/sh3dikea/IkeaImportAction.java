@@ -34,8 +34,9 @@ public final class IkeaImportAction extends PluginAction {
             dialog.toFront();
         } catch (Exception e) {
             e.printStackTrace();
+            IkeaLog.error("IKEA Browser could not start", e);
             JOptionPane.showMessageDialog(parent,
-                    "IKEA Browser could not start:\n" + e.getMessage(),
+                    "IKEA Browser could not start:\n" + IkeaErrors.details(e),
                     "IKEA Browser", JOptionPane.ERROR_MESSAGE);
         }
     }

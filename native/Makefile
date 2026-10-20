@@ -14,7 +14,9 @@
 #   make -C native DRACO_PREFIX=/some/where
 #
 # Requirements: a C++14 compiler and the libdraco development files
-# (`brew install draco` on macOS, `apt install libdraco-dev` on Debian/Ubuntu).
+# (`apt install libdraco-dev` on Debian/Ubuntu). On macOS, build libdraco
+# from source for MACOSX_DEPLOYMENT_TARGET (see README); Homebrew's bottle
+# targets the host's macOS version and is rejected by `verify`.
 
 # --- Platform detection ---------------------------------------------------
 
@@ -32,7 +34,11 @@ else ifeq ($(UNAME_S),Linux)
     LIB_PREFIX       := lib
     LIB_EXT          := so
     PLATFORM_INCLUDE := linux
-    LDFLAGS_OS       := -shared -Wl,-rpath,$$ORIGIN
+    # Static libstdc++/libgcc so the .so loads on distros and Flatpak
+    # runtimes whose libstdc++ is older than the build host's. Hide the
+    # statically linked libdraco symbols and refuse unresolved references.
+    LDFLAGS_OS       := -shared -static-libstdc++ -static-libgcc \
+                        -Wl,--exclude-libs,ALL -Wl,-z,defs -Wl,--as-needed
 else ifneq (,$(filter MINGW% MSYS% CYGWIN%,$(UNAME_S)))
     OS               := windows
     LIB_PREFIX       :=
@@ -81,15 +87,26 @@ ifeq ($(DRACO_PREFIX),)
     done)
 endif
 ifeq ($(DRACO_PREFIX),)
-    $(error libdraco not found. Install with `brew install draco` / `apt install libdraco-dev`, or set DRACO_PREFIX)
+    $(error libdraco not found. Install `libdraco-dev` on Debian/Ubuntu, build libdraco from source on macOS, or set DRACO_PREFIX)
 endif
 
-# Static library is preferred so the .sh3p doesn't need libdraco at runtime.
-DRACO_STATIC := $(DRACO_PREFIX)/lib/libdraco.a
-ifneq ($(wildcard $(DRACO_STATIC)),)
+# libdraco must be linked statically: end users (and Flatpak/Snap sandboxes)
+# don't have libdraco.so installed, so a dynamically linked bridge fails to
+# load at runtime. Debian/Ubuntu put the archive under lib/<multiarch>/.
+ifeq ($(OS),linux)
+    MULTIARCH := $(shell m=$$($(CXX) -print-multiarch 2>/dev/null); \
+        [ -n "$$m" ] || m=$$($(CXX) -dumpmachine 2>/dev/null); echo $$m)
+endif
+DRACO_STATIC := $(firstword $(wildcard \
+    $(DRACO_PREFIX)/lib/libdraco.a \
+    $(DRACO_PREFIX)/lib64/libdraco.a \
+    $(if $(MULTIARCH),$(DRACO_PREFIX)/lib/$(MULTIARCH)/libdraco.a)))
+ifneq ($(DRACO_STATIC),)
     DRACO_LINK := $(DRACO_STATIC)
-else
+else ifeq ($(DRACO_ALLOW_SHARED),1)
     DRACO_LINK := -L$(DRACO_PREFIX)/lib -ldraco
+else
+    $(error libdraco.a not found under $(DRACO_PREFIX). A dynamically linked bridge won't load on end-user machines; set DRACO_ALLOW_SHARED=1 to build one anyway for local testing)
 endif
 
 # --- Tooling --------------------------------------------------------------
@@ -101,9 +118,13 @@ LDFLAGS  := $(LDFLAGS_OS)
 
 # On macOS, force the build to a single arch matching the host so we don't
 # accidentally produce a fat binary that fails to load libdraco's other arch.
+# Pin the minimum macOS version; otherwise it defaults to the build host's
+# OS and the bridge refuses to load on anything older. libdraco.a must be
+# built for the same (or an older) target — Homebrew's bottle isn't.
 ifeq ($(OS),macos)
-    CXXFLAGS += -arch $(UNAME_M)
-    LDFLAGS  += -arch $(UNAME_M)
+    MACOSX_DEPLOYMENT_TARGET ?= 11.0
+    CXXFLAGS += -arch $(UNAME_M) -mmacosx-version-min=$(MACOSX_DEPLOYMENT_TARGET)
+    LDFLAGS  += -arch $(UNAME_M) -mmacosx-version-min=$(MACOSX_DEPLOYMENT_TARGET)
 endif
 
 # --- Outputs --------------------------------------------------------------
@@ -114,15 +135,54 @@ DEST     := $(DEST_DIR)/$(LIB_NAME)
 
 # --- Targets --------------------------------------------------------------
 
-.PHONY: all clean info
+.PHONY: all clean info verify
 
-all: $(DEST)
+all: $(DEST) verify
 
 $(DEST): src/draco_jni.cpp
 	@mkdir -p $(DEST_DIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(DRACO_LINK) $(LDFLAGS) -o $@
 	@echo "Built $@"
 	@if command -v file >/dev/null 2>&1; then file $@; fi
+
+# Fail if the bridge depends on anything a stock end-user system may lack.
+verify: $(DEST)
+ifeq ($(OS),linux)
+	@deps=$$(readelf -d $(DEST) | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p'); \
+	echo "Runtime deps: $$deps"; \
+	bad=$$(echo "$$deps" | grep -v -E '^(libc|libm|libdl|libpthread|librt|ld-linux.*)\.so' || true); \
+	if [ -n "$$bad" ] && [ "$(DRACO_ALLOW_SHARED)" != "1" ]; then \
+	    echo "ERROR: $(DEST) needs non-system libraries: $$bad" >&2; exit 1; \
+	fi; \
+	echo "Max GLIBC symbol version: $$(objdump -T $(DEST) | grep -o 'GLIBC_[0-9.]*' | sort -t. -k2,2n -k3,3n -u | tail -1)"
+else ifeq ($(OS),macos)
+	@if otool -L $(DEST) | tail -n +2 | grep -i draco | grep -v dracojni; then \
+	    if [ "$(DRACO_ALLOW_SHARED)" != "1" ]; then \
+	        echo "ERROR: $(DEST) links libdraco dynamically" >&2; exit 1; \
+	    fi; \
+	fi
+	@minos=$$(otool -l $(DEST) | awk '/minos/ {print $$2; exit}'); \
+	echo "Minimum macOS: $$minos"; \
+	if [ "$$minos" != "$(MACOSX_DEPLOYMENT_TARGET)" ] && [ "$(DRACO_ALLOW_SHARED)" != "1" ]; then \
+	    echo "ERROR: expected minimum macOS $(MACOSX_DEPLOYMENT_TARGET), got $$minos" >&2; exit 1; \
+	fi
+	@if [ -n "$(DRACO_STATIC)" ] && [ "$(DRACO_ALLOW_SHARED)" != "1" ]; then \
+	    dmin=$$(otool -l $(DRACO_STATIC) | awk '/minos/ {print $$2}' | sort -t. -k1,1n -k2,2n | tail -1); \
+	    hi=$$(printf '%s\n%s\n' "$$dmin" "$(MACOSX_DEPLOYMENT_TARGET)" | sort -t. -k1,1n -k2,2n | tail -1); \
+	    if [ "$$hi" != "$(MACOSX_DEPLOYMENT_TARGET)" ]; then \
+	        echo "ERROR: $(DRACO_STATIC) targets macOS $$dmin, newer than $(MACOSX_DEPLOYMENT_TARGET)." >&2; \
+	        echo "Build libdraco with -DCMAKE_OSX_DEPLOYMENT_TARGET=$(MACOSX_DEPLOYMENT_TARGET) and pass DRACO_PREFIX." >&2; \
+	        rm -f $(DEST); exit 1; \
+	    fi; \
+	fi
+else
+	@deps=$$(objdump -p $(DEST) | sed -n 's/.*DLL Name: //p'); \
+	echo "Runtime deps: $$deps"; \
+	bad=$$(echo "$$deps" | grep -v -i -E '^(kernel32|msvcrt|user32|advapi32|ws2_32|api-ms-win-.*)\.dll$$' || true); \
+	if [ -n "$$bad" ] && [ "$(DRACO_ALLOW_SHARED)" != "1" ]; then \
+	    echo "ERROR: $(DEST) needs non-system DLLs: $$bad" >&2; exit 1; \
+	fi
+endif
 
 clean:
 	rm -f $(DEST)
@@ -132,6 +192,7 @@ info:
 	@echo "ARCH            = $(ARCH)"
 	@echo "JAVA_HOME       = $(JAVA_HOME)"
 	@echo "DRACO_PREFIX    = $(DRACO_PREFIX)"
+	@echo "MULTIARCH       = $(MULTIARCH)"
 	@echo "DRACO_LINK      = $(DRACO_LINK)"
 	@echo "CXX             = $(CXX)"
 	@echo "CXXFLAGS        = $(CXXFLAGS)"

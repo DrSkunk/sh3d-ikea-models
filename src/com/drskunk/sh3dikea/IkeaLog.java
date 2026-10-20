@@ -17,77 +17,113 @@ import java.util.Properties;
  * cache. We use this rather than {@code System.err} because Sweet Home 3D's
  * macOS app bundle swallows stderr; a file in a known location is easy to
  * point a user at when something goes wrong.
+ *
+ * WARN and ERROR entries are always written so users can attach the log to
+ * a bug report; the file is only created once something actually fails.
+ * INFO entries are written only in debug builds ({@code make debug} bakes
+ * {@code debug=true} into {@code build.properties}) or when the system
+ * property {@code ikeabrowser.debug=true} is set.
  */
 public final class IkeaLog {
 
-    private static final SimpleDateFormat TS = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+    private static final long MAX_BYTES = 1024 * 1024;
 
-    /**
-     * Logging is disabled in release builds so users don't accumulate a debug
-     * file they never asked for. {@code make debug} bakes {@code debug=true}
-     * into {@code build.properties} inside the jar; the system property
-     * {@code ikeabrowser.debug=true} also enables it without a rebuild.
-     */
-    private static final boolean ENABLED = readDebugFlag();
+    private static final Properties BUILD = readBuildProperties();
 
-    private static final File LOG_FILE = ENABLED ? resolveLogFile() : null;
+    private static final boolean DEBUG =
+            "true".equalsIgnoreCase(System.getProperty("ikeabrowser.debug"))
+                    || "true".equalsIgnoreCase(BUILD.getProperty("debug", "false"));
 
-    private static boolean readDebugFlag() {
-        if ("true".equalsIgnoreCase(System.getProperty("ikeabrowser.debug"))) {
-            return true;
-        }
+    private static File logFile;
+    private static boolean headerWritten;
+
+    private static Properties readBuildProperties() {
+        Properties p = new Properties();
         try (InputStream in = IkeaLog.class.getResourceAsStream(
                 "/com/drskunk/sh3dikea/build.properties")) {
-            if (in == null) return false;
-            Properties p = new Properties();
-            p.load(in);
-            return "true".equalsIgnoreCase(p.getProperty("debug", "false"));
-        } catch (IOException e) {
-            return false;
+            if (in != null) p.load(in);
+        } catch (IOException ignored) {
+            // defaults
         }
+        return p;
     }
 
-    public static boolean isEnabled() { return ENABLED; }
+    public static boolean isDebugEnabled() { return DEBUG; }
+
+    public static String pluginVersion() { return BUILD.getProperty("version", "unknown"); }
+
+    /** Location of the log file (it may not exist yet if nothing was logged). */
+    public static synchronized File logFile() {
+        if (logFile == null) logFile = resolveLogFile();
+        return logFile;
+    }
 
     private static File resolveLogFile() {
         try {
-            File appFolder = OperatingSystem.getDefaultApplicationFolder();
-            File dir = new File(appFolder, "IkeaBrowser");
-            if (!dir.exists()) dir.mkdirs();
-            return new File(dir, "debug.log");
-        } catch (IOException e) {
+            return new File(new File(OperatingSystem.getDefaultApplicationFolder(), "IkeaBrowser"),
+                    "debug.log");
+        } catch (Throwable t) {
             return new File(System.getProperty("user.home"), "ikeabrowser-debug.log");
         }
     }
 
-    public static File logFile() { return LOG_FILE; }
-
     public static void info(String msg) {
-        if (ENABLED) write("INFO ", msg, null);
+        if (DEBUG) write("INFO ", msg, null);
     }
 
     public static void warn(String msg, Throwable t) {
-        if (ENABLED) write("WARN ", msg, t);
+        write("WARN ", msg, t);
     }
 
     public static void error(String msg, Throwable t) {
-        if (ENABLED) write("ERROR", msg, t);
+        write("ERROR", msg, t);
+    }
+
+    /** One-line description of the runtime, handy at the top of bug reports. */
+    public static String environment() {
+        String sandbox = "none";
+        if (System.getenv("FLATPAK_ID") != null || new File("/.flatpak-info").exists()) {
+            sandbox = "flatpak (" + System.getenv("FLATPAK_ID") + ")";
+        } else if (System.getenv("SNAP") != null) {
+            sandbox = "snap (" + System.getenv("SNAP_NAME") + ")";
+        }
+        return "plugin=" + pluginVersion()
+                + ", os=" + System.getProperty("os.name") + " " + System.getProperty("os.version")
+                + ", arch=" + System.getProperty("os.arch")
+                + ", java=" + System.getProperty("java.version")
+                + " (" + System.getProperty("java.vendor") + ")"
+                + ", sandbox=" + sandbox;
     }
 
     private static synchronized void write(String level, String msg, Throwable t) {
-        if (LOG_FILE == null) return;
-        try (FileWriter fw = new FileWriter(LOG_FILE, true);
-             PrintWriter pw = new PrintWriter(fw)) {
-            pw.print("[" + TS.format(new Date()) + "] " + level + " ");
-            pw.println(msg);
-            if (t != null) {
-                StringWriter sw = new StringWriter();
-                t.printStackTrace(new PrintWriter(sw));
-                pw.println(sw.toString().trim());
+        File file = logFile();
+        try {
+            File dir = file.getParentFile();
+            if (dir != null && !dir.exists()) dir.mkdirs();
+            rotateIfNeeded(file);
+            try (PrintWriter pw = new PrintWriter(new FileWriter(file, true))) {
+                String ts = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+                if (!headerWritten) {
+                    headerWritten = true;
+                    pw.println("[" + ts + "] INFO  Session start: " + environment());
+                }
+                pw.println("[" + ts + "] " + level + " " + msg);
+                if (t != null) {
+                    StringWriter sw = new StringWriter();
+                    t.printStackTrace(new PrintWriter(sw));
+                    pw.println(sw.toString().trim());
+                }
             }
-        } catch (IOException ignored) {
+        } catch (IOException | RuntimeException ignored) {
             // best effort
         }
+    }
+
+    private static void rotateIfNeeded(File file) {
+        if (file.length() < MAX_BYTES) return;
+        File old = new File(file.getParentFile(), file.getName() + ".1");
+        if (old.exists()) old.delete();
+        file.renameTo(old);
     }
 
     private IkeaLog() {}
