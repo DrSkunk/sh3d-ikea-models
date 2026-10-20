@@ -72,7 +72,6 @@ endif
 # (C:\hostedtoolcache\...). Translate it so the -I flags work correctly.
 ifeq ($(OS),windows)
     JAVA_HOME := $(shell cygpath -m "$(JAVA_HOME)" 2>/dev/null || echo "$(JAVA_HOME)")
-    DRACO_PREFIX := $(shell cygpath -m "$(DRACO_PREFIX)" 2>/dev/null || echo "$(DRACO_PREFIX)")
 endif
 
 # --- libdraco -------------------------------------------------------------
@@ -88,6 +87,12 @@ ifeq ($(DRACO_PREFIX),)
 endif
 ifeq ($(DRACO_PREFIX),)
     $(error libdraco not found. Install `libdraco-dev` on Debian/Ubuntu, build libdraco from source on macOS, or set DRACO_PREFIX)
+endif
+
+# mingw32-make is a native Windows program: $(wildcard) can't resolve MSYS
+# paths like /mingw64, so translate the (possibly auto-detected) prefix.
+ifeq ($(OS),windows)
+    DRACO_PREFIX := $(shell cygpath -m "$(DRACO_PREFIX)" 2>/dev/null || echo "$(DRACO_PREFIX)")
 endif
 
 # libdraco must be linked statically: end users (and Flatpak/Snap sandboxes)
