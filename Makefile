@@ -82,9 +82,9 @@ package:
 	fi
 	$(ANT) -Dsh3d.jar="$(SH3D_JAR)" package
 
-# Debug build — same outputs as `make`, but with IkeaLog enabled. Logs
-# land in <SH3D-app-dir>/IkeaBrowser/debug.log; release builds skip the
-# logging entirely.
+# Debug build — same outputs as `make`, but IkeaLog also writes INFO
+# entries (HTTP requests, import steps). Release builds only log warnings
+# and errors. Logs land in <SH3D-app-dir>/IkeaBrowser/debug.log.
 debug: native
 	@if [ -z "$(SH3D_JAR)" ] || [ ! -f "$(SH3D_JAR)" ]; then \
 	    echo "SweetHome3D.jar not found at: $(SH3D_JAR)"; \

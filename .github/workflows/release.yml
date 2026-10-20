@@ -28,15 +28,29 @@ jobs:
           - target: macos-arm64
             runs-on: macos-14   # Apple Silicon
             shell: bash
-            install: brew install draco
+            # Homebrew's libdraco.a targets the runner's macOS version, which
+            # would make the bridge refuse to load on older macOS. Build it
+            # ourselves for the same minimum version as native/Makefile.
+            install: |
+              git clone --depth 1 --branch 1.5.7 https://github.com/google/draco.git "$RUNNER_TEMP/draco-src"
+              cmake -S "$RUNNER_TEMP/draco-src" -B "$RUNNER_TEMP/draco-build" \
+                -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+                -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DCMAKE_OSX_ARCHITECTURES=arm64 \
+                -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/draco"
+              cmake --build "$RUNNER_TEMP/draco-build" -j3
+              cmake --install "$RUNNER_TEMP/draco-build"
+              echo "DRACO_PREFIX=$RUNNER_TEMP/draco" >> "$GITHUB_ENV"
+          # Linux bridges are built on the oldest supported Ubuntu so the
+          # resulting .so only needs glibc >= 2.34 (Ubuntu 22.04, Debian 12,
+          # Flathub's freedesktop runtimes, Arch, Fedora…).
           - target: linux-x86_64
-            runs-on: ubuntu-latest
+            runs-on: ubuntu-22.04
             shell: bash
             install: |
               sudo apt-get update
               sudo apt-get install -y libdraco-dev
           - target: linux-arm64
-            runs-on: ubuntu-24.04-arm
+            runs-on: ubuntu-22.04-arm
             shell: bash
             install: |
               sudo apt-get update
@@ -80,22 +94,24 @@ jobs:
         uses: actions/cache@v5
         with:
           path: src/com/drskunk/sh3dikea/draco/native/${{ matrix.target }}
-          key: native-${{ matrix.target }}-${{ hashFiles('native/src/**', 'native/Makefile') }}
+          key: native-${{ matrix.target }}-${{ matrix.runs-on }}-${{ hashFiles('native/src/**', 'native/Makefile', '.github/workflows/release.yml') }}
 
       - name: Install libdraco
         if: steps.cache-native.outputs.cache-hit != 'true' && matrix.target != 'windows-x86_64'
         shell: bash
         run: ${{ matrix.install }}
 
+      # -B: the repo may contain a locally built binary that make would
+      # otherwise consider up to date and ship as-is.
       - name: Build JNI library
         if: steps.cache-native.outputs.cache-hit != 'true' && matrix.target != 'windows-x86_64'
         shell: bash
-        run: make -C native
+        run: make -B -C native
 
       - name: Build JNI library (Windows)
         if: steps.cache-native.outputs.cache-hit != 'true' && matrix.target == 'windows-x86_64'
         shell: 'msys2 {0}'
-        run: mingw32-make -C native
+        run: mingw32-make -B -C native
 
       - name: Upload native artifact
         uses: actions/upload-artifact@v7

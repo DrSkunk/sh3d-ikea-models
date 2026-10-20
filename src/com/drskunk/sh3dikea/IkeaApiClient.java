@@ -200,8 +200,20 @@ public final class IkeaApiClient {
             conn.setRequestProperty("X-Client-Id", CLIENT_ID);
         }
 
-        int status = conn.getResponseCode();
+        long start = System.currentTimeMillis();
+        int status;
+        try {
+            status = conn.getResponseCode();
+        } catch (IOException e) {
+            IkeaLog.warn("GET " + url + " failed after " + (System.currentTimeMillis() - start)
+                    + " ms: " + e, null);
+            conn.disconnect();
+            throw e;
+        }
+        IkeaLog.info("GET " + url + " -> " + status + " (" + (System.currentTimeMillis() - start) + " ms)");
         if (status < 200 || status >= 300) {
+            IkeaLog.warn("HTTP " + status + " for " + url + ", body: " + errorBodySnippet(conn), null);
+            conn.disconnect();
             throw new IOException("HTTP " + status + " " + conn.getResponseMessage() + " for " + url);
         }
 
@@ -213,6 +225,18 @@ public final class IkeaApiClient {
             return buf.toByteArray();
         } finally {
             conn.disconnect();
+        }
+    }
+
+    private static String errorBodySnippet(HttpURLConnection conn) {
+        try (InputStream in = conn.getErrorStream()) {
+            if (in == null) return "(none)";
+            byte[] b = new byte[300];
+            int n = 0, r;
+            while (n < b.length && (r = in.read(b, n, b.length - n)) > 0) n += r;
+            return new String(b, 0, n, StandardCharsets.UTF_8).replaceAll("\\s+", " ").trim();
+        } catch (IOException e) {
+            return "(unreadable: " + e + ")";
         }
     }
 }

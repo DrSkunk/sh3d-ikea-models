@@ -79,11 +79,12 @@ public final class IkeaBrowserDialog extends JDialog {
             throw new RuntimeException("Could not create IKEA cache directory", e);
         }
         rebuildClient();
-        IkeaLog.info("Browser opened. Draco available="
-                + com.drskunk.sh3dikea.draco.DracoNative.isAvailable()
-                + ", os.name=" + System.getProperty("os.name")
-                + ", os.arch=" + System.getProperty("os.arch")
-                + ", java.version=" + System.getProperty("java.version"));
+        boolean draco = com.drskunk.sh3dikea.draco.DracoNative.isAvailable();
+        IkeaLog.info("Browser opened. " + IkeaLog.environment() + ", draco=" + draco);
+        if (!draco) {
+            IkeaLog.warn("Draco library unavailable, models will import as placeholder boxes: "
+                    + com.drskunk.sh3dikea.draco.DracoNative.getLoadError(), null);
+        }
 
         setLayout(new BorderLayout(0, 0));
 
@@ -197,8 +198,13 @@ public final class IkeaBrowserDialog extends JDialog {
                     resultsPanel.revalidate();
                     resultsPanel.repaint();
                 } catch (Exception e) {
-                    Throwable cause = e.getCause() != null ? e.getCause() : e;
-                    statusLabel.setText("Search failed: " + cause.getMessage());
+                    Throwable cause = IkeaErrors.rootCause(e);
+                    IkeaLog.error("Search failed for \"" + query + "\" (country="
+                            + settings.getCountry() + ", language=" + settings.getLanguage() + ")", cause);
+                    statusLabel.setText("Search failed: " + IkeaErrors.summary(cause));
+                    JOptionPane.showMessageDialog(IkeaBrowserDialog.this,
+                            "Search failed: " + IkeaErrors.details(cause),
+                            "IKEA Browser", JOptionPane.ERROR_MESSAGE);
                 }
             }
         }.execute();
@@ -291,6 +297,8 @@ public final class IkeaBrowserDialog extends JDialog {
                         target.setText("(no image)");
                     }
                 } catch (Exception ex) {
+                    IkeaLog.warn("Thumbnail failed for " + p.itemNo + " (" + p.mainImageUrl + ")",
+                            IkeaErrors.rootCause(ex));
                     target.setText("(image error)");
                 }
             }
@@ -314,6 +322,8 @@ public final class IkeaBrowserDialog extends JDialog {
                 } catch (Exception ex) {
                     // If the check fails, leave the button enabled so the user
                     // can still attempt the import (which will surface the error).
+                    IkeaLog.warn("Model availability check failed for " + p.itemNo,
+                            IkeaErrors.rootCause(ex));
                 }
             }
         }.execute();
@@ -341,9 +351,10 @@ public final class IkeaBrowserDialog extends JDialog {
                     importer.addToHome(homeController, home, prepared);
                     statusLabel.setText("Added \"" + p.name + "\" to home.");
                 } catch (Exception ex) {
-                    Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+                    Throwable cause = IkeaErrors.rootCause(ex);
+                    IkeaLog.error("Import failed for " + p.itemNo + " (" + p.name + ")", cause);
                     JOptionPane.showMessageDialog(IkeaBrowserDialog.this,
-                            "Could not import this item:\n" + cause.getMessage(),
+                            "Could not import this item:\n" + IkeaErrors.details(cause),
                             "IKEA Browser", JOptionPane.ERROR_MESSAGE);
                 }
             }
@@ -360,7 +371,7 @@ public final class IkeaBrowserDialog extends JDialog {
                 return;
             }
         } catch (Exception ex) {
-            // fall through to platform-specific fallback
+            IkeaLog.info("Desktop.open failed for " + folder + ": " + ex);
         }
         try {
             // Final fallback: shell out per OS so this still works on stock
@@ -376,6 +387,7 @@ public final class IkeaBrowserDialog extends JDialog {
             }
             pb.start();
         } catch (Exception ex) {
+            IkeaLog.warn("Could not open cache folder " + folder, ex);
             JOptionPane.showMessageDialog(this,
                     "Could not open the cache folder.\nIt lives at:\n" + folder.getAbsolutePath(),
                     "IKEA Browser", JOptionPane.WARNING_MESSAGE);

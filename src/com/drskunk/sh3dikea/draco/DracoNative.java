@@ -6,13 +6,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Thin wrapper around the bundled JNI library that calls libdraco.
  *
  * The library is shipped inside this jar under
  * {@code /com/drskunk/sh3dikea/draco/native/<os>-<arch>/<libname>}, extracted
- * to a temp file the first time {@link #isAvailable()} is queried, and loaded
+ * to a per-user temp directory (falling back to a cache directory under the
+ * user's home) the first time {@link #isAvailable()} is queried, and loaded
  * via {@link System#load(String)}. Loading is best-effort: if no binary
  * matches the current platform, the plugin falls back to placeholder boxes.
  */
@@ -33,7 +36,7 @@ public final class DracoNative {
                 tryLoad();
                 available = Boolean.TRUE;
             } catch (Throwable t) {
-                loadError = t.getMessage();
+                loadError = describe(t);
                 available = Boolean.FALSE;
             }
             return available;
@@ -45,6 +48,11 @@ public final class DracoNative {
         synchronized (LOCK) { return loadError; }
     }
 
+    private static String describe(Throwable t) {
+        String msg = t.getMessage();
+        return t.getClass().getSimpleName() + (msg == null ? "" : ": " + msg);
+    }
+
     private static void tryLoad() throws IOException {
         String os = detectOs();
         String arch = detectArch();
@@ -54,28 +62,69 @@ public final class DracoNative {
         }
         String libFile = libName(os);
         String resourcePath = "/com/drskunk/sh3dikea/draco/native/" + os + "-" + arch + "/" + libFile;
-
-        try (InputStream in = DracoNative.class.getResourceAsStream(resourcePath)) {
-            if (in == null) {
-                throw new IOException("No bundled Draco library for " + os + "-" + arch
-                        + " (looked for " + resourcePath + ")");
-            }
-            File tempDir = new File(System.getProperty("java.io.tmpdir"), "sh3d-ikea-draco");
-            if (!tempDir.exists() && !tempDir.mkdirs()) {
-                throw new IOException("Cannot create temp dir " + tempDir);
-            }
-            File extracted = new File(tempDir, libFile);
-            // Always overwrite — handles upgrades cleanly.
-            File tmp = File.createTempFile("dracojni-", ".tmp", tempDir);
-            try (FileOutputStream fos = new FileOutputStream(tmp)) {
-                byte[] buf = new byte[16 * 1024];
-                int n;
-                while ((n = in.read(buf)) > 0) fos.write(buf, 0, n);
-            }
-            Files.move(tmp.toPath(), extracted.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            // System.load needs an absolute path.
-            System.load(extracted.getAbsolutePath());
+        if (DracoNative.class.getResource(resourcePath) == null) {
+            throw new IOException("No bundled Draco library for " + os + "-" + arch
+                    + " (looked for " + resourcePath + ")");
         }
+
+        // Try each candidate directory in turn: the temp dir can be mounted
+        // noexec or owned by another user, in which case loading fails there.
+        StringBuilder errors = new StringBuilder();
+        for (File dir : extractionDirs(os)) {
+            try {
+                File extracted = extract(resourcePath, dir, libFile);
+                System.load(extracted.getAbsolutePath());
+                return;
+            } catch (IOException | UnsatisfiedLinkError | SecurityException e) {
+                if (errors.length() > 0) errors.append("; ");
+                errors.append(dir).append(": ").append(describe(e));
+            }
+        }
+        throw new IOException("Could not load " + libFile + " for " + os + "-" + arch + " (" + errors + ")");
+    }
+
+    private static List<File> extractionDirs(String os) {
+        String user = System.getProperty("user.name", "user").replaceAll("[^A-Za-z0-9._-]", "_");
+        List<File> dirs = new ArrayList<>();
+        dirs.add(new File(System.getProperty("java.io.tmpdir"), "sh3d-ikea-draco-" + user));
+        String home = System.getProperty("user.home");
+        if (home != null) {
+            if ("linux".equals(os)) {
+                String xdg = System.getenv("XDG_CACHE_HOME");
+                File cache = xdg != null && !xdg.isEmpty() ? new File(xdg) : new File(home, ".cache");
+                dirs.add(new File(cache, "sh3d-ikea-draco"));
+            } else {
+                dirs.add(new File(home, ".sh3d-ikea-draco"));
+            }
+        }
+        return dirs;
+    }
+
+    private static File extract(String resourcePath, File dir, String libFile) throws IOException {
+        if (!dir.isDirectory() && !dir.mkdirs()) {
+            throw new IOException("Cannot create directory");
+        }
+        File extracted = new File(dir, libFile);
+        // Always overwrite — handles upgrades cleanly.
+        File tmp = File.createTempFile("dracojni-", ".tmp", dir);
+        try (InputStream in = DracoNative.class.getResourceAsStream(resourcePath);
+             FileOutputStream fos = new FileOutputStream(tmp)) {
+            if (in == null) throw new IOException("Resource disappeared: " + resourcePath);
+            byte[] buf = new byte[16 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) fos.write(buf, 0, n);
+        } catch (IOException e) {
+            tmp.delete();
+            throw e;
+        }
+        try {
+            Files.move(tmp.toPath(), extracted.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            tmp.delete();
+            // Windows can't replace a DLL that another SH3D instance has loaded.
+            if (!extracted.isFile()) throw e;
+        }
+        return extracted;
     }
 
     private static String detectOs() {
