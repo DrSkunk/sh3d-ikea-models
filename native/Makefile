@@ -76,10 +76,10 @@ endif
 
 # --- libdraco -------------------------------------------------------------
 
-# Auto-detect Homebrew (Apple Silicon + Intel), MSYS2 mingw64, local
-# install, or system path.
+# Prefer the active MSYS2 environment to avoid mixing CRTs, then check
+# Homebrew (Apple Silicon + Intel), local installs, or the system path.
 ifeq ($(DRACO_PREFIX),)
-    DRACO_PREFIX := $(shell for p in /opt/homebrew /mingw64 /usr/local /usr; do \
+    DRACO_PREFIX := $(shell for p in $(MINGW_PREFIX) /opt/homebrew /ucrt64 /mingw64 /usr/local /usr; do \
         if [ -f $$p/include/draco/compression/decode.h ]; then \
             echo $$p; break; \
         fi; \
@@ -183,7 +183,7 @@ else ifeq ($(OS),macos)
 else
 	@deps=$$(objdump -p $(DEST) | sed -n 's/.*DLL Name: //p'); \
 	echo "Runtime deps: $$deps"; \
-	bad=$$(echo "$$deps" | grep -v -i -E '^(kernel32|msvcrt|user32|advapi32|ws2_32|api-ms-win-.*)\.dll$$' || true); \
+	bad=$$(echo "$$deps" | grep -v -i -E '^(kernel32|msvcrt|ucrtbase|user32|advapi32|ws2_32|api-ms-win-.*)\.dll$$' || true); \
 	if [ -n "$$bad" ] && [ "$(DRACO_ALLOW_SHARED)" != "1" ]; then \
 	    echo "ERROR: $(DEST) needs non-system DLLs: $$bad" >&2; exit 1; \
 	fi
