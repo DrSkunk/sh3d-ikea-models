@@ -57,7 +57,7 @@ jobs:
               sudo apt-get install -y libdraco-dev
           - target: windows-x86_64
             runs-on: windows-latest
-            # MSYS2 mingw64 gives us a GCC toolchain and pre-built libdraco.
+            # MSYS2 UCRT64 gives us a GCC toolchain and pre-built libdraco.
             # The msys2 setup step below provisions both.
             shell: 'msys2 {0}'
             install: ":"  # provisioning happens via setup-msys2; no extra install
@@ -77,13 +77,13 @@ jobs:
         if: matrix.target == 'windows-x86_64'
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: UCRT64
           update: false
           install: >-
             base-devel
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-make
-            mingw-w64-x86_64-draco
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-make
+            mingw-w64-ucrt-x86_64-draco
 
       # The compiled JNI binary is statically linked against libdraco, so a
       # cache hit gives us a self-contained binary even if the upstream draco

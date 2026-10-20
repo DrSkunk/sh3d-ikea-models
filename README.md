@@ -200,6 +200,10 @@ builds the Linux binaries on Ubuntu 22.04, so they need glibc 2.34 or
 newer. The macOS binary targets macOS 11 or newer
 (`MACOSX_DEPLOYMENT_TARGET`).
 
+The Windows binary is built with MSYS2 UCRT64. The Universal C Runtime is
+included in Windows 10/11; older Windows installations need it installed
+separately. libdraco and the GCC C++ runtime remain statically linked.
+
 ## License
 
 GPL v2 or later, matching the Sweet Home 3D plugin SDK. The bundled
