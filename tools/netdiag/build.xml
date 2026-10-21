@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Standalone debug plugin: network diagnostics for IKEA Browser.
+     Built from the top-level Makefile with `make netdiag`. The resulting
+     .sh3p is both a Sweet Home 3D plugin and a runnable jar:
+         java -jar dist/IkeaNetDiag.sh3p [extra-host ...] -->
+<project name="sh3d-ikea-netdiag" default="package" basedir=".">
+
+    <property name="sh3d.jar"  location="../../lib/SweetHome3D.jar"/>
+    <property name="src.dir"   value="src"/>
+    <property name="build.dir" value="../../build/netdiag"/>
+    <property name="dist.dir"  value="../../dist"/>
+
+    <target name="clean">
+        <delete dir="${build.dir}"/>
+        <delete file="${dist.dir}/IkeaNetDiag.sh3p"/>
+    </target>
+
+    <target name="compile">
+        <mkdir dir="${build.dir}"/>
+        <javac srcdir="${src.dir}"
+               destdir="${build.dir}"
+               source="1.8"
+               target="1.8"
+               encoding="UTF-8"
+               includeantruntime="false"
+               debug="true">
+            <classpath>
+                <pathelement location="${sh3d.jar}"/>
+            </classpath>
+        </javac>
+    </target>
+
+    <target name="package" depends="compile">
+        <mkdir dir="${dist.dir}"/>
+        <jar destfile="${dist.dir}/IkeaNetDiag.sh3p">
+            <fileset dir="${build.dir}"/>
+            <fileset dir="${src.dir}" includes="ApplicationPlugin.properties"/>
+            <manifest>
+                <attribute name="Main-Class" value="com.drskunk.sh3dikea.netdiag.NetDiag"/>
+            </manifest>
+        </jar>
+        <echo>Built ${dist.dir}/IkeaNetDiag.sh3p</echo>
+    </target>
+</project>
