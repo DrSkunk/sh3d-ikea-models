@@ -5,11 +5,14 @@
 # Common usage:
 #   make                # build native lib + package the .sh3p
 #   make native         # rebuild only the JNI bridge
+#   make deps           # fetch pinned third-party jars (Bouncy Castle, TwelveMonkeys)
 #   make package        # only re-run ant (no native rebuild)
 #   make debug          # like `make`, but with runtime logging on
 #   make install        # copy the .sh3p into the local plugins folder
 #   make reinstall      # clean + build + install
 #   make run            # launch Sweet Home 3D (macOS only)
+#   make netdiag        # build the network diagnostics debug plugin
+#   make netdiag-install  # copy it into the local plugins folder
 #   make bump-major     # 1.2.3 → 2.0.0, commit, tag vX.Y.Z
 #   make bump-minor     # 1.2.3 → 1.3.0, commit, tag vX.Y.Z
 #   make bump-patch     # 1.2.3 → 1.2.4, commit, tag vX.Y.Z
@@ -64,17 +67,21 @@ ANT        ?= ant
 
 # --- Targets -----------------------------------------------------------------
 
-.PHONY: all native package debug install reinstall run clean distclean \
-        bump-major bump-minor bump-patch _bump print-config help
+.PHONY: all deps native package debug install reinstall run clean distclean \
+        bump-major bump-minor bump-patch _bump print-config help \
+        netdiag netdiag-install
 
 all: native package
+
+deps:
+	@scripts/fetch-deps.sh
 
 native:
 	@$(MAKE) -C native
 
 # Always run ant — it does its own incremental compilation, and Make can't
 # track the per-file Java/properties/native dependency graph.
-package:
+package: deps
 	@if [ -z "$(SH3D_JAR)" ] || [ ! -f "$(SH3D_JAR)" ]; then \
 	    echo "SweetHome3D.jar not found at: $(SH3D_JAR)"; \
 	    echo "Set SH3D_JAR=/path/to/SweetHome3D.jar or drop the jar into lib/"; \
@@ -85,7 +92,7 @@ package:
 # Debug build — same outputs as `make`, but IkeaLog also writes INFO
 # entries (HTTP requests, import steps). Release builds only log warnings
 # and errors. Logs land in <SH3D-app-dir>/IkeaBrowser/debug.log.
-debug: native
+debug: native deps
 	@if [ -z "$(SH3D_JAR)" ] || [ ! -f "$(SH3D_JAR)" ]; then \
 	    echo "SweetHome3D.jar not found at: $(SH3D_JAR)"; \
 	    echo "Set SH3D_JAR=/path/to/SweetHome3D.jar or drop the jar into lib/"; \
@@ -103,6 +110,22 @@ install: package
 	@echo "Restart Sweet Home 3D to pick up the new build."
 
 reinstall: clean all install
+
+# Standalone debug plugin that tests DNS/TCP/TLS/HTTP to IKEA's endpoints
+# from inside Sweet Home 3D's JRE. Doubles as a runnable jar:
+#   java -jar dist/IkeaNetDiag.sh3p [extra-host ...]
+netdiag:
+	@if [ -z "$(SH3D_JAR)" ] || [ ! -f "$(SH3D_JAR)" ]; then \
+	    echo "SweetHome3D.jar not found at: $(SH3D_JAR)"; \
+	    echo "Set SH3D_JAR=/path/to/SweetHome3D.jar or drop the jar into lib/"; \
+	    exit 1; \
+	fi
+	$(ANT) -f tools/netdiag/build.xml -Dsh3d.jar="$(abspath $(SH3D_JAR))" package
+
+netdiag-install: netdiag
+	@mkdir -p "$(SH3D_PLUGIN_DIR)"
+	cp dist/IkeaNetDiag.sh3p "$(SH3D_PLUGIN_DIR)/"
+	@echo "Installed to $(SH3D_PLUGIN_DIR)/IkeaNetDiag.sh3p"
 
 run:
 ifeq ($(UNAME),Darwin)
@@ -178,11 +201,14 @@ help:
 	@echo "Targets:"
 	@echo "  make             native + package (default, no debug logging)"
 	@echo "  make native      build the JNI bridge for this platform"
+	@echo "  make deps        fetch pinned third-party jars (Bouncy Castle, TwelveMonkeys)"
 	@echo "  make package     run ant to build $(SH3P)"
 	@echo "  make debug       build $(SH3P) with runtime logging enabled"
 	@echo "  make install     copy $(SH3P) into the local plugins folder"
 	@echo "  make reinstall   clean + build + install"
 	@echo "  make run         launch Sweet Home 3D (macOS only)"
+	@echo "  make netdiag     build dist/IkeaNetDiag.sh3p (network diagnostics)"
+	@echo "  make netdiag-install  build + copy it into the local plugins folder"
 	@echo "  make bump-major  bump major version, commit, tag"
 	@echo "  make bump-minor  bump minor version, commit, tag"
 	@echo "  make bump-patch  bump patch version, commit, tag"
