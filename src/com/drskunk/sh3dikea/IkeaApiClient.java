@@ -2,6 +2,7 @@ package com.drskunk.sh3dikea;
 
 import com.drskunk.sh3dikea.json.Json;
 
+import javax.net.ssl.SSLHandshakeException;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,9 +11,12 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Talks to the same public IKEA endpoints as the Blender ikea-browser add-on.
@@ -33,6 +37,13 @@ public final class IkeaApiClient {
     private static final String USER_AGENT =
             "Sweet Home 3D IKEA Browser ( https://github.com/drskunk/sh3d-ikea-models/ )";
     private static final int TIMEOUT_MS = 15000;
+
+    /**
+     * Hosts whose TLS handshake failed because this JRE lacks EC crypto;
+     * requests to them go through {@link BcHttpsClient} for the rest of the
+     * session.
+     */
+    private static final Set<String> BC_TLS_HOSTS = Collections.synchronizedSet(new HashSet<String>());
 
     private final String country;
     private final String language;
@@ -191,19 +202,40 @@ public final class IkeaApiClient {
             url += qs;
         }
 
-        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("User-Agent", USER_AGENT);
+        headers.put("Accept", "*/*");
+        if (withClientId) {
+            headers.put("X-Client-Id", CLIENT_ID);
+        }
+
+        URL u = new URL(url);
+        if (BC_TLS_HOSTS.contains(u.getHost())) {
+            return bcHttpsGet(url, headers);
+        }
+
+        HttpURLConnection conn = (HttpURLConnection) u.openConnection();
         conn.setConnectTimeout(TIMEOUT_MS);
         conn.setReadTimeout(TIMEOUT_MS);
-        conn.setRequestProperty("User-Agent", USER_AGENT);
-        conn.setRequestProperty("Accept", "*/*");
-        if (withClientId) {
-            conn.setRequestProperty("X-Client-Id", CLIENT_ID);
+        for (Map.Entry<String, String> h : headers.entrySet()) {
+            conn.setRequestProperty(h.getKey(), h.getValue());
         }
 
         long start = System.currentTimeMillis();
         int status;
         try {
             status = conn.getResponseCode();
+        } catch (SSLHandshakeException e) {
+            conn.disconnect();
+            if ("https".equals(u.getProtocol()) && !BcHttpsClient.jreHasEcdh()) {
+                IkeaLog.warn("TLS handshake with " + u.getHost() + " failed and this JRE has no EC crypto"
+                        + " (" + e.getMessage() + "); switching this host to Bouncy Castle TLS", null);
+                BC_TLS_HOSTS.add(u.getHost());
+                return bcHttpsGet(url, headers);
+            }
+            IkeaLog.warn("GET " + url + " failed after " + (System.currentTimeMillis() - start)
+                    + " ms: " + e, null);
+            throw e;
         } catch (IOException e) {
             IkeaLog.warn("GET " + url + " failed after " + (System.currentTimeMillis() - start)
                     + " ms: " + e, null);
@@ -226,6 +258,27 @@ public final class IkeaApiClient {
         } finally {
             conn.disconnect();
         }
+    }
+
+    private static byte[] bcHttpsGet(String url, Map<String, String> headers) throws IOException {
+        long start = System.currentTimeMillis();
+        BcHttpsClient.Response r;
+        try {
+            r = BcHttpsClient.get(url, headers, TIMEOUT_MS);
+        } catch (IOException e) {
+            IkeaLog.warn("GET " + url + " (Bouncy Castle TLS) failed after "
+                    + (System.currentTimeMillis() - start) + " ms: " + e, null);
+            throw e;
+        }
+        IkeaLog.info("GET " + url + " -> " + r.status + " (Bouncy Castle TLS, "
+                + (System.currentTimeMillis() - start) + " ms)");
+        if (r.status < 200 || r.status >= 300) {
+            String snippet = new String(r.body, 0, Math.min(r.body.length, 300), StandardCharsets.UTF_8)
+                    .replaceAll("\\s+", " ").trim();
+            IkeaLog.warn("HTTP " + r.status + " for " + url + ", body: " + snippet, null);
+            throw new IOException("HTTP " + r.status + " " + r.message + " for " + url);
+        }
+        return r.body;
     }
 
     private static String errorBodySnippet(HttpURLConnection conn) {

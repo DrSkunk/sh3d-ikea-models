@@ -16,6 +16,10 @@
     <!-- Set -Ddebug=true to enable runtime logging in IkeaLog. -->
     <property name="debug" value="false"/>
 
+    <property name="bc.prov.jar" value="bcprov-jdk18on-1.86.jar"/>
+    <property name="bc.util.jar" value="bcutil-jdk18on-1.86.jar"/>
+    <property name="bc.tls.jar"  value="bctls-jdk18on-1.86.2.jar"/>
+
     <target name="-check-sdk">
         <available file="${sh3d.jar}" property="sh3d.jar.available"/>
         <fail unless="sh3d.jar.available">
@@ -33,7 +37,7 @@ On macOS the jar typically lives inside the app bundle, e.g.:
         <delete dir="${dist.dir}"/>
     </target>
 
-    <target name="compile" depends="-check-sdk">
+    <target name="compile" depends="-check-sdk, -check-deps">
         <mkdir dir="${build.dir}"/>
         <javac srcdir="${src.dir}"
                destdir="${build.dir}"
@@ -54,6 +58,7 @@ On macOS the jar typically lives inside the app bundle, e.g.:
                 <fileset dir="lib"
                          includes="j3dcore.jar,vecmath.jar,j3dutils.jar"
                          erroronmissingdir="false"/>
+                <fileset dir="lib/bouncycastle" includes="*.jar"/>
                 <!-- Fallback: search the macOS app bundle. -->
                 <fileset dir="/Applications/Sweet Home 3D.app/Contents/app"
                          includes="j3dcore.jar,vecmath.jar,j3dutils.jar"
@@ -64,9 +69,31 @@ On macOS the jar typically lives inside the app bundle, e.g.:
 
     <!-- Twelvemonkeys ImageIO plugins (WebP reader + dependencies). These
          are bundled inside the .sh3p so that IKEA's WebP textures decode
-         on every JRE without the user installing anything. -->
+         on every JRE without the user installing anything. Fetched by
+         `make deps`; the build fails if they are missing so a release can
+         never silently ship without WebP support. -->
     <fileset id="twelvemonkeys.jars" dir="lib/twelvemonkeys"
-             includes="*.jar" erroronmissingdir="false"/>
+             includes="*.jar"/>
+
+    <!-- Bouncy Castle (bcprov + bcutil + bctls): pure-Java TLS fallback for
+         JREs without EC crypto, see BcHttpsClient. Fetched by
+         `make deps`. Merged into the .sh3p with the jar signatures and
+         multi-release entries stripped: stale signature files would make
+         the merged jar fail verification, and nothing here goes through
+         JCE, so the signatures aren't needed. -->
+    <property name="bc.excludes"
+              value="META-INF/*.SF,META-INF/*.DSA,META-INF/*.RSA,META-INF/*.EC,META-INF/MANIFEST.MF,META-INF/versions/**,**/module-info.class"/>
+
+    <target name="-check-deps">
+        <available file="lib/bouncycastle/${bc.prov.jar}" property="bc.available"/>
+        <fail unless="bc.available">
+Bouncy Castle jars are missing from lib/bouncycastle/. Run `make deps`.
+        </fail>
+        <available file="lib/twelvemonkeys/imageio-webp-3.10.1.jar" property="webp.available"/>
+        <fail unless="webp.available">
+TwelveMonkeys jars are missing from lib/twelvemonkeys/. Run `make deps`.
+        </fail>
+    </target>
 
     <!-- Copy bundled native libraries into the build output so they are
          available both on the test classpath and inside the .sh3p jar. -->
@@ -97,6 +124,9 @@ version=${plugin.version}
             <!-- Merge TwelveMonkeys jars (classes + META-INF/services) so
                  ImageIO.scanForPlugins() picks up the WebP reader. -->
             <zipgroupfileset refid="twelvemonkeys.jars"/>
+            <zipfileset src="lib/bouncycastle/${bc.prov.jar}" excludes="${bc.excludes}"/>
+            <zipfileset src="lib/bouncycastle/${bc.util.jar}" excludes="${bc.excludes}"/>
+            <zipfileset src="lib/bouncycastle/${bc.tls.jar}"  excludes="${bc.excludes}"/>
         </jar>
         <echo>Built ${dist.dir}/${plugin.name}.sh3p</echo>
     </target>

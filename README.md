@@ -18,6 +18,11 @@ models directly into your home. Inspired by the
   imports are instant.
 - Imports use IKEA's reported width / depth / height so pieces are
   scaled correctly the moment they land in your floor plan.
+- Decodes IKEA's WebP textures with a bundled WebP reader, so models
+  arrive textured on any Java runtime.
+- Works on the Java runtime bundled with the official Linux build and the
+  Flatpak, which can't reach IKEA's search server on its own (see
+  [Troubleshooting](#received-fatal-alert-handshake_failure)).
 - Falls back to a textured-box placeholder when the model can't be
   decoded (e.g. on a platform with no bundled native binary).
 
@@ -34,6 +39,36 @@ Alternatively, drop the `.sh3p` file into Sweet Home 3D's `plugins` folder:
 - macOS: `~/Library/Application Support/eTeks/Sweet Home 3D/plugins/`
 - Linux: `~/.eteks/sweethome3d/plugins/`
 - Windows: `%APPDATA%\eTeks\Sweet Home 3D\plugins\`
+
+### Flatpak (Flathub) on Linux
+
+The Flathub build of Sweet Home 3D works too, but it ships **without
+network access**, so the plugin can't reach IKEA until you allow it. Pick
+one of the options below, then restart Sweet Home 3D.
+
+**Flatseal (graphical, permanent):** install
+[Flatseal](https://flathub.org/apps/com.github.tchx84.Flatseal), select
+**Sweet Home 3D** in the list, turn on **Network** under **Share**, and
+close Flatseal.
+
+**Command line (permanent):**
+
+```sh
+flatpak override --user --share=network com.sweethome3d.Sweethome3d
+```
+
+**Command line (only this run, nothing changed):**
+
+```sh
+flatpak run --share=network com.sweethome3d.Sweethome3d
+```
+
+To take network access away again, switch **Network** off in Flatseal or
+run `flatpak override --user --unshare=network com.sweethome3d.Sweethome3d`.
+
+Install the plugin as described above. The Flatpak can read your home
+folder, so dropping the `.sh3p` into `~/.eteks/sweethome3d/plugins/` works
+too.
 
 ## Using
 
@@ -52,15 +87,49 @@ available, the import dialog says so and nothing is added.
 ### "Search failed: cannot resolve host …"
 
 Sweet Home 3D can't reach IKEA. The Flathub build of Sweet Home 3D ships
-**without network access**, so the plugin can't connect until you grant it:
+**without network access**, so the plugin can't connect until you grant it
+(see [Flatpak (Flathub) on Linux](#flatpak-flathub-on-linux) for Flatseal
+and command-line options):
 
 ```sh
 flatpak override --user --share=network com.sweethome3d.Sweethome3d
 ```
 
-(or enable **Network** for Sweet Home 3D in Flatseal), then restart Sweet
-Home 3D. Otherwise, check your internet connection, proxy, firewall, or DNS
-filter.
+Then restart Sweet Home 3D. Otherwise, check your internet connection,
+proxy, VPN, firewall, or DNS filter (Pi-hole, AdGuard, NextDNS…; make sure
+`sik.search.blue.cdtapps.com`, `web-api.ikea.com` and `www.ikea.com` aren't
+blocked).
+
+### "Received fatal alert: handshake_failure"
+
+Fixed in this version; update the plugin. The Java runtime bundled with
+the official Sweet Home 3D Linux download (and the Flatpak, which
+repackages it) is missing its elliptic-curve crypto module. IKEA's search
+server only accepts elliptic-curve (ECDHE) connections, so that Java can't
+connect to it. The plugin now detects this and switches to a bundled
+pure-Java TLS implementation ([Bouncy Castle](https://www.bouncycastle.org/))
+for that server, checking certificates against Java's normal trust store.
+The log notes it once per session:
+
+```
+WARN  TLS handshake with sik.search.blue.cdtapps.com failed and this JRE has no EC crypto (...); switching this host to Bouncy Castle TLS
+```
+
+### Network diagnostics
+
+If searching or importing still fails, the separate
+**IkeaNetDiag.sh3p** debug plugin (attached to each
+[release](https://github.com/DrSkunk/sh3d-ikea-models/releases/latest), or
+`make netdiag`) shows exactly where the connection breaks. Install it like
+the main plugin, open **Tools → IKEA network diagnostics…** and click
+**Run diagnostics**. It checks the sandbox, proxy settings, DNS (compared
+with public DNS-over-HTTPS), TCP, TLS (versions, cipher suites, presented
+certificates) and the plugin's actual requests, then lists likely causes.
+**Copy report** puts the report on the clipboard; it's also saved as
+`IkeaBrowser/netdiag-report.txt`. The report doesn't contain your IP
+addresses, but does list DNS servers, network interface names and proxy
+settings, so look it over before posting it publicly. It also runs from a
+terminal: `java -jar IkeaNetDiag.sh3p`.
 
 ### Log file
 
@@ -108,13 +177,6 @@ re-download / re-conversion on the next import.
 
 ## Limitations
 
-- IKEA's textures are typically WebP. Most stock JREs don't decode WebP
-  through `ImageIO`, so the imported model lands with solid-colour
-  materials and intact UV coordinates, and the geometry is the real GLB
-  mesh. Adding the
-  [TwelveMonkeys ImageIO-WebP](https://github.com/haraldk/TwelveMonkeys)
-  jar to the Sweet Home 3D classpath enables texture decoding without
-  changing this plugin.
 - Only `KHR_draco_mesh_compression` is decoded; `EXT_meshopt_compression`
   falls back to a placeholder box.
 - Search reaches the live IKEA API, so results vary by country / language
@@ -129,7 +191,7 @@ re-download / re-conversion on the next import.
 
 Requirements:
 
-- A JDK (8 or newer) and Apache Ant.
+- A JDK (8 or newer), Apache Ant, `curl` and Bash.
 - A C++14 compiler and the libdraco development files. These are only
   needed if you don't already have a native binary committed under
   `src/com/drskunk/sh3dikea/draco/native/<os>-<arch>/` for your host.
@@ -160,6 +222,8 @@ make SH3D_JAR=/path/to/SweetHome3D.jar
 
 # Other useful targets:
 make native     # rebuild the JNI bridge only
+make deps       # fetch the pinned third-party jars
+make netdiag    # build the network diagnostics plugin
 make package    # only re-run ant (skips native rebuild)
 make clean      # wipe build/ and dist/
 make distclean  # also remove all bundled native binaries
@@ -167,6 +231,15 @@ make help       # list targets and variables
 ```
 
 The plugin file is written to `dist/IkeaBrowser.sh3p`.
+
+The third-party jars merged into the plugin (Bouncy Castle for the TLS
+fallback, TwelveMonkeys for WebP) aren't committed. `make deps` (run
+automatically by `make` / `make package`) downloads them from Maven Central
+into `lib/bouncycastle/` and `lib/twelvemonkeys/`, pinned by version and
+SHA-256 in `scripts/fetch-deps.sh`. The build fails if they're missing.
+
+`make netdiag` builds the network diagnostics plugin
+(`dist/IkeaNetDiag.sh3p`, sources in `tools/netdiag/`).
 
 If you'd rather invoke the underlying tools directly, `make -C native`
 builds the JNI bridge and `ant -Dsh3d.jar=...` packages the `.sh3p`.
@@ -206,6 +279,12 @@ separately. libdraco and the GCC C++ runtime remain statically linked.
 
 ## License
 
-GPL v2 or later, matching the Sweet Home 3D plugin SDK. The bundled
-libdraco binaries are statically linked from the
-[`google/draco`](https://github.com/google/draco) project (Apache 2.0).
+GPL v2 or later, matching the Sweet Home 3D plugin SDK. Bundled
+third-party code:
+
+- libdraco, statically linked from
+  [`google/draco`](https://github.com/google/draco) (Apache 2.0).
+- [Bouncy Castle](https://www.bouncycastle.org/) `bcprov`, `bcutil`,
+  `bctls` ([MIT-style Bouncy Castle licence](https://www.bouncycastle.org/licence.html)).
+- [TwelveMonkeys ImageIO](https://github.com/haraldk/TwelveMonkeys) WebP
+  reader (BSD 3-Clause).

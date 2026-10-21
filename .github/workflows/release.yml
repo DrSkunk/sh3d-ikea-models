@@ -175,14 +175,22 @@ jobs:
           done
           find "$dest" -type f
 
+      - name: Fetch third-party jars
+        run: scripts/fetch-deps.sh
+
       - name: Build plugin
         run: ant -Dsh3d.jar=lib/SweetHome3D.jar package
+
+      - name: Build network diagnostics plugin
+        run: ant -f tools/netdiag/build.xml -Dsh3d.jar="$PWD/lib/SweetHome3D.jar" package
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: IkeaBrowser-sh3p
-          path: dist/IkeaBrowser.sh3p
+          path: |
+            dist/IkeaBrowser.sh3p
+            dist/IkeaNetDiag.sh3p
           if-no-files-found: error
 
   release:
@@ -203,4 +211,6 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
-          files: IkeaBrowser.sh3p
+          files: |
+            IkeaBrowser.sh3p
+            IkeaNetDiag.sh3p
